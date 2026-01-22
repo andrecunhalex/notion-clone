@@ -86,6 +86,90 @@ export default function Home() {
       });
   }, []);
 
+  // --- Quebra Automática de Página (Overflow Split) ---
+  useEffect(() => {
+    if (viewMode !== 'paginated') return;
+
+    const PAGE_CONTENT_HEIGHT = 950;
+    const TITLE_HEIGHT = 150;
+    
+    let currentH = 0;
+    let pageIndex = 0;
+    let splitAction: { id: string, splitPoint: number } | null = null;
+    
+    // Simula paginação para encontrar overflow
+    for (const block of blocks) {
+        const h = blockHeights[block.id] || 24;
+        const limit = (pageIndex === 0) ? (PAGE_CONTENT_HEIGHT - TITLE_HEIGHT) : PAGE_CONTENT_HEIGHT;
+
+        if (currentH + h > limit) {
+           const availableH = limit - currentH;
+           
+           // Quebra se for texto, houver espaço (>50px) e o bloco for maior que o espaço
+           if (block.type === 'text' && availableH > 50 && h > availableH) {
+                splitAction = { id: block.id, splitPoint: availableH };
+                break; 
+           }
+           pageIndex++;
+           currentH = h;
+        } else {
+           currentH += h;
+        }
+    }
+
+    if (splitAction) {
+       const { id, splitPoint } = splitAction;
+       const el = document.getElementById(`editable-${id}`);
+       if (!el) return;
+       const content = el.innerText;
+       
+       // Medição binária (tenta achar quantos caracteres cabem)
+       const clone = document.createElement('div');
+       clone.style.cssText = window.getComputedStyle(el).cssText;
+       clone.style.position = 'absolute';
+       clone.style.visibility = 'hidden';
+       clone.style.width = el.clientWidth + 'px';
+       document.body.appendChild(clone);
+
+       let low = 0, high = content.length;
+       let bestIndex = -1;
+
+       // Binary search para encontrar o maior índice que cabe na altura disponível
+       while (low <= high) {
+           const mid = Math.floor((low + high) / 2);
+           clone.innerText = content.substring(0, mid);
+           if (clone.getBoundingClientRect().height <= splitPoint) {
+               bestIndex = mid;
+               low = mid + 1;
+           } else {
+               high = mid - 1;
+           }
+       }
+       document.body.removeChild(clone);
+
+       // Só aplica se o corte for útil (não nas bordas extremas)
+       if (bestIndex > 5 && bestIndex < content.length - 5) {
+           const part1 = content.substring(0, bestIndex);
+           const part2 = content.substring(bestIndex);
+           const index = blocks.findIndex(b => b.id === id);
+           if (index === -1) return;
+
+           const newBlock1 = { ...blocks[index], content: part1 };
+           const newBlock2 = { ...blocks[index], id: generateId(), content: part2 };
+           
+           const newBlocks = [...blocks];
+           newBlocks.splice(index, 1, newBlock1, newBlock2);
+           setBlocks(newBlocks);
+           
+           // Joga o foco para o novo bloco na próxima página
+           requestAnimationFrame(() => {
+               const nextEl = document.getElementById(`editable-${newBlock2.id}`);
+               if (nextEl) nextEl.focus();
+           });
+       }
+    }
+  }, [blockHeights, blocks, viewMode]);
+
   // --- Teclado Global e Colar ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -142,57 +226,76 @@ export default function Home() {
         const clipboardData = e.clipboardData;
         if (!clipboardData) return;
         const text = clipboardData.getData('text');
+        
+        let processedBlocks: BlockData[] | null = null;
+
+        // 1. Tenta interpretar como blocos JSON (copiado internamente)
         try {
             const pastedData = JSON.parse(text);
-            // Verifica se é o formato de blocos do nosso app
-            if (Array.isArray(pastedData) && pastedData[0].content !== undefined) {
-                e.preventDefault();
-                const newBlocks = pastedData.map((b: any) => ({ ...b, id: generateId() }));
-                
-                let insertIndex = blocks.length;
-                let shouldReplace = false;
-
-                // Cenario 1: Tem blocos selecionados (via drag/rubber band)
-                if (selectedIds.size > 0) {
-                    // Acha o índice do último bloco selecionado para colar depois dele
-                    let maxIndex = -1;
-                    blocks.forEach((b, i) => {
-                        if (selectedIds.has(b.id)) maxIndex = i;
-                    });
-                    if (maxIndex !== -1) {
-                        insertIndex = maxIndex + 1;
-                    }
-                } 
-                // Cenario 2: Está com foco em um bloco (editando texto)
-                else if (document.activeElement && document.activeElement.id.startsWith('editable-')) {
-                    const activeId = document.activeElement.id.replace('editable-', '');
-                    const activeIndex = blocks.findIndex(b => b.id === activeId);
-                    
-                    if (activeIndex !== -1) {
-                        const activeBlock = blocks[activeIndex];
-                        // Se o bloco atual for texto e estiver vazio, substituímos ele!
-                        if (activeBlock.type === 'text' && activeBlock.content.trim() === '') {
-                            shouldReplace = true;
-                            insertIndex = activeIndex;
-                        } else {
-                            // Senão, cola embaixo
-                            insertIndex = activeIndex + 1;
-                        }
-                    }
-                }
-
-                // Cria nova lista
-                const finalBlocks = [...blocks];
-                
-                if (shouldReplace) {
-                    finalBlocks.splice(insertIndex, 1, ...newBlocks);
-                } else {
-                    finalBlocks.splice(insertIndex, 0, ...newBlocks);
-                }
-
-                setBlocks(finalBlocks);
+            if (Array.isArray(pastedData) && pastedData.length > 0 && pastedData[0].content !== undefined) {
+                processedBlocks = pastedData.map((b: any) => ({ ...b, id: generateId() }));
             }
         } catch (err) {}
+
+        // 2. Fallback: Interpreta como Texto Plano (quebra por parágrafos)
+        if (!processedBlocks) {
+             const lines = text.split('\n').filter(line => line.trim() !== '');
+             if (lines.length > 0) {
+                 processedBlocks = lines.map(line => ({
+                     id: generateId(),
+                     type: 'text',
+                     content: line
+                 }));
+             }
+        }
+
+        if (processedBlocks) {
+             e.preventDefault();
+             const newBlocks = processedBlocks;
+                
+             let insertIndex = blocks.length;
+             let shouldReplace = false;
+
+             // Cenario 1: Tem blocos selecionados (via drag/rubber band)
+             if (selectedIds.size > 0) {
+                // Acha o índice do último bloco selecionado para colar depois dele
+                let maxIndex = -1;
+                blocks.forEach((b, i) => {
+                    if (selectedIds.has(b.id)) maxIndex = i;
+                });
+                if (maxIndex !== -1) {
+                    insertIndex = maxIndex + 1;
+                }
+             } 
+             // Cenario 2: Está com foco em um bloco (editando texto)
+             else if (document.activeElement && document.activeElement.id.startsWith('editable-')) {
+                const activeId = document.activeElement.id.replace('editable-', '');
+                const activeIndex = blocks.findIndex(b => b.id === activeId);
+                
+                if (activeIndex !== -1) {
+                    const activeBlock = blocks[activeIndex];
+                    // Se o bloco atual for texto e estiver vazio, substituímos ele!
+                    if (activeBlock.type === 'text' && activeBlock.content.trim() === '') {
+                        shouldReplace = true;
+                        insertIndex = activeIndex;
+                    } else {
+                        // Senão, cola embaixo
+                        insertIndex = activeIndex + 1;
+                    }
+                }
+             }
+
+             // Cria nova lista
+             const finalBlocks = [...blocks];
+             
+             if (shouldReplace) {
+                 finalBlocks.splice(insertIndex, 1, ...newBlocks);
+             } else {
+                 finalBlocks.splice(insertIndex, 0, ...newBlocks);
+             }
+
+             setBlocks(finalBlocks);
+        }
     };
 
     window.addEventListener('keydown', handleKeyDown);
