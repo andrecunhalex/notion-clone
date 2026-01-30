@@ -69,7 +69,7 @@ const useHistory = <T,>(initialState: T): [T, (newState: T) => void, () => void,
 // --- Componente Principal ---
 export default function Home() {
   const [blocks, setBlocks, undo, redo, canUndo, canRedo] = useHistory<BlockData[]>([initialBlock]);
-  const [viewMode, setViewMode] = useState<'continuous' | 'paginated'>('continuous');
+  const [viewMode, setViewMode] = useState<'continuous' | 'paginated'>('paginated');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [slashMenu, setSlashMenu] = useState<SlashMenuState>({ isOpen: false, x: 0, y: 0, blockId: null });
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
@@ -544,6 +544,38 @@ export default function Home() {
       return pages;
   };
 
+  const handlePageClick = (e: React.MouseEvent, pageBlocks: BlockData[]) => {
+       if (e.target !== e.currentTarget) return;
+       const blocksOnPage = pageBlocks.map(b => document.getElementById(`editable-${b.id}`)).filter(Boolean) as HTMLElement[];
+       if (blocksOnPage.length === 0) return;
+
+       let closest = blocksOnPage[0];
+       let minDst = Infinity;
+       const clickY = e.clientY;
+
+       for (const b of blocksOnPage) {
+           const rect = b.getBoundingClientRect();
+           let dist = 0;
+           if (clickY < rect.top) dist = rect.top - clickY;
+           else if (clickY > rect.bottom) dist = clickY - rect.bottom;
+
+           if (dist < minDst) {
+               minDst = dist;
+               closest = b;
+           }
+       }
+
+       closest.focus();
+       const range = document.createRange();
+       const sel = window.getSelection();
+       if (sel) {
+           range.selectNodeContents(closest);
+           range.collapse(false);
+           sel.removeAllRanges();
+           sel.addRange(range);
+       }
+  };
+
   const pages = getPaginatedBlocks();
 
   return (
@@ -577,7 +609,7 @@ export default function Home() {
         ref={containerRef} 
         className={`mx-auto relative cursor-text transition-all duration-300 ${
             viewMode === 'paginated' 
-                ? '' 
+                ? 'pt-8' 
                 : 'max-w-3xl mt-12 px-12 pb-64 min-h-[80vh]'
         }`}
       >
@@ -587,14 +619,8 @@ export default function Home() {
                 className={viewMode === 'paginated' 
                     ? "min-h-[297mm] bg-white shadow-lg px-[20mm] py-[15mm] mb-8 mx-auto max-w-[210mm]" 
                     : ""}
+                onClick={(e) => handlePageClick(e, pageBlocks)}
              >
-                {/* Title only on first page */}
-                {(viewMode === 'continuous' || pageIndex === 0) && (
-                    <div className="mb-8 group">
-                        <h1 className="text-4xl font-bold text-gray-900 mb-2 outline-none" contentEditable suppressContentEditableWarning>Sem Título</h1>
-                    </div>
-                )}
-
                 {pageBlocks.map((block, index) => (
                     <Block 
                         key={block.id}
@@ -646,9 +672,50 @@ export default function Home() {
                 const currentBlock = blocks.find(b => b.id === slashMenu.blockId);
                 if (!currentBlock) return;
 
-                const cleanContent = currentBlock.content.endsWith('/') 
-                    ? currentBlock.content.slice(0, -1) 
-                    : currentBlock.content;
+                let cleanContent = currentBlock.content;
+                
+                // Tenta achar a posição do comando baseado na seleção atual
+                const selection = window.getSelection();
+                if (selection && selection.rangeCount > 0 && selection.focusNode) {
+                    const range = selection.getRangeAt(0);
+                    // Verifica se a seleção está dentro do bloco correto (ou é o próprio bloco)
+                    const blockEl = document.getElementById(`editable-${slashMenu.blockId}`);
+                    
+                    if (blockEl && blockEl.contains(selection.focusNode)) {
+                         const text = blockEl.innerText; // Usa innerText para garantir consistencia visual
+                         const offset = selection.focusOffset;
+                         
+                         // Se o foco estiver num nó de texto, precisamos calcular o offset global dentro do bloco
+                         // Mas como simplificação, nossos blocos costumam ter um único nó de texto.
+                         // Vamos tentar encontrar a barra mais próxima antes do cursor.
+                         
+                         // Estrategia simples: pegar o conteudo até o cursor e achar a ultima barra
+                         // Nota: range.startOffset é relativo ao nó.
+                         
+                         // Vamos usar a string content do bloco que é a fonte da verdade
+                         // Porem precisamos saber ONDE está o cursor nela.
+                         // Se assumirmos que o texto não tem formatação aninhada:
+                         const currentPos = selection.anchorOffset; // pode ser relativo ao nodo texto
+                         
+                         // Procura a "/" antes do cursor
+                         const textBefore = cleanContent.slice(0, currentPos);
+                         const slashIndex = textBefore.lastIndexOf('/');
+                         
+                         if (slashIndex !== -1) {
+                             // Remove tudo entre a barra e o cursor (inclusive a barra)
+                             cleanContent = cleanContent.slice(0, slashIndex) + cleanContent.slice(currentPos);
+                         }
+                    }
+                } 
+                
+                // Fallback caso a seleção falhe (ex: blur): 
+                // Se a string nao mudou, tenta remover do final (comportamento padrao antigo mas menos agressivo)
+                if (cleanContent === currentBlock.content) {
+                     // Se terminar com barra ou barra+texto
+                     if (cleanContent.trim().endsWith('/')) {
+                         cleanContent = cleanContent.slice(0, cleanContent.lastIndexOf('/'));
+                     }
+                }
 
                 const el = document.getElementById(`editable-${slashMenu.blockId}`);
                 if (el) el.innerText = cleanContent;
@@ -767,8 +834,6 @@ const Block: React.FC<BlockProps> = ({ block, index, isSelected, updateBlock, ad
         text: "text-base my-1 text-gray-700 leading-relaxed"
     };
 
-    const showPlaceholder = index === 0 && block.type === 'text';
-
     return (
         <div 
             ref={internalRef}
@@ -797,7 +862,7 @@ const Block: React.FC<BlockProps> = ({ block, index, isSelected, updateBlock, ad
                     id={`editable-${block.id}`}
                     contentEditable
                     suppressContentEditableWarning
-                    className={`outline-none empty:before:text-gray-300 cursor-text ${styles[block.type]} ${showPlaceholder ? 'empty:before:content-[attr(data-placeholder)]' : ''}`}
+                    className={`outline-none empty:before:text-gray-300 cursor-text ${styles[block.type]} focus:empty:before:content-[attr(data-placeholder)]`}
                     data-placeholder="Digite '/' para comandos..."
                     onKeyDown={handleKeyDown}
                     onInput={(e) => updateBlock(block.id, { content: e.currentTarget.innerText })}
