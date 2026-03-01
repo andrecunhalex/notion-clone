@@ -22,7 +22,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   defaultViewMode = 'paginated',
   title = 'MiniNotion'
 }) => {
-  const [blocks, setBlocksInternal, undo, redo, canUndo, canRedo] = useHistory<BlockData[]>(initialBlocks);
+  const [blocks, setBlocksRaw, undoRaw, redoRaw, canUndo, canRedo] = useHistory<BlockData[]>(initialBlocks);
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
   const [slashMenu, setSlashMenu] = useState<SlashMenuState>({
     isOpen: false, x: 0, y: 0, blockId: null
@@ -31,17 +31,33 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const blockRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
-  const setBlocks = useCallback((newBlocks: BlockData[]) => {
-    setBlocksInternal(newBlocks);
-    onChange?.(newBlocks);
-  }, [setBlocksInternal, onChange]);
-
-  const { blockHeights, handleHeightChange } = usePagination({ blocks, setBlocks, viewMode });
-
   const {
     selectedIds, setSelectedIds, selectionBox,
     startSelection, clearSelection, didDragSelect
   } = useSelection({ blocks, containerRef, blockRefs });
+
+  // Ref to capture current selectedIds without stale closures
+  const selectedIdsRef = useRef(selectedIds);
+  selectedIdsRef.current = selectedIds;
+
+  // Wrap setBlocks to save current selection in history before advancing
+  const setBlocks = useCallback((newBlocks: BlockData[]) => {
+    setBlocksRaw(newBlocks, Array.from(selectedIdsRef.current));
+    onChange?.(newBlocks);
+  }, [setBlocksRaw, onChange]);
+
+  // Wrap undo/redo to also restore selection state
+  const undo = useCallback(() => {
+    const restoredIds = undoRaw();
+    setSelectedIds(new Set(restoredIds));
+  }, [undoRaw, setSelectedIds]);
+
+  const redo = useCallback(() => {
+    const restoredIds = redoRaw();
+    setSelectedIds(new Set(restoredIds));
+  }, [redoRaw, setSelectedIds]);
+
+  const { blockHeights, handleHeightChange } = usePagination({ blocks, setBlocks, viewMode });
 
   const { updateBlock, addBlock, removeBlock, deleteSelectedBlocks, moveBlocks } = useBlockManager({
     blocks, setBlocks
