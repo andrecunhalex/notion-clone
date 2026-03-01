@@ -124,9 +124,7 @@ export const Block: React.FC<BlockProps> = ({
   return (
     <div
       ref={internalRef}
-      className={`group relative flex items-start -ml-12 pr-2 py-0.5 transition-colors ${
-        isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'
-      }`}
+      className="group relative flex items-start -ml-12 pr-2 py-0.5 my-0.5"
       onDragOver={e => onDragOver(e, block.id)}
       onDrop={e => { e.stopPropagation(); onDrop(e); }}
     >
@@ -151,7 +149,9 @@ export const Block: React.FC<BlockProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 min-w-0 notion-block-content">
+      <div className={`flex-1 min-w-0 notion-block-content py-0.5 px-1 rounded-sm transition-colors ${
+        isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'
+      }`}>
         <div
           id={`editable-${block.id}`}
           contentEditable

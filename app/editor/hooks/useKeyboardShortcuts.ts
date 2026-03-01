@@ -51,11 +51,27 @@ export const useKeyboardShortcuts = ({
         }
       }
 
-      // Select All
+      // Select All (Notion-like: first selects text in block, then all blocks)
       if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+        const activeElement = document.activeElement as HTMLElement;
+
+        // If editing a non-empty block, first Ctrl+A selects text within the block
+        if (activeElement?.isContentEditable) {
+          const content = activeElement.textContent || '';
+          if (content.trim() !== '') {
+            const sel = window.getSelection();
+            const selectedText = sel?.toString() || '';
+            // If not all text is selected yet, let browser select all text in this block
+            if (selectedText.length < content.length) {
+              return;
+            }
+          }
+        }
+
+        // Empty block, no focus, or all text already selected → select all blocks
         e.preventDefault();
-        if (document.activeElement instanceof HTMLElement) {
-          document.activeElement.blur();
+        if (activeElement instanceof HTMLElement) {
+          activeElement.blur();
         }
         setSelectedIds(new Set(blocks.map(b => b.id)));
         return;
