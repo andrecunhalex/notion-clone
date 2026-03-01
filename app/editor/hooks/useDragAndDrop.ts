@@ -46,7 +46,17 @@ export const useDragAndDrop = ({
     const draggedBlocks = blocks.filter(b => ids.includes(b.id));
     draggedBlocks.slice(0, 3).forEach(b => {
       const div = document.createElement('div');
-      div.textContent = b.content || (b.type === 'text' ? 'Texto vazio' : 'Título vazio');
+      // div.textContent = b.content || (b.type === 'text' ? 'Texto vazio' : 'Título vazio');
+      // export type BlockType = 'text' | 'h1' | 'h2' | 'bullet_list' | 'numbered_list' | 'table';
+      div.textContent = b.content || ({
+        text: 'Texto vazio',
+        h1: 'Título vazio',
+        h2: 'Subtítulo vazio',
+        bullet_list: 'Item com marcador',
+        numbered_list: 'Item numerado',
+        table: 'Tabela',
+      }[b.type]);
+
       Object.assign(div.style, {
         fontSize: '12px', color: '#374151', marginBottom: '4px',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
