@@ -69,8 +69,18 @@ export const Block: React.FC<BlockProps> = ({
 
   useEffect(() => {
     const el = document.getElementById(`editable-${block.id}`);
-    if (el && document.activeElement !== el && el.innerText !== block.content) {
+    if (el && el.innerText !== block.content) {
+      const isFocused = document.activeElement === el;
       el.innerText = block.content;
+      // Restore cursor to end if block was focused (e.g. after undo/redo)
+      if (isFocused && block.content) {
+        const range = document.createRange();
+        const sel = window.getSelection();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
     }
   }, [block.content, block.id]);
 

@@ -65,20 +65,22 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.closest('.notion-block-content') || target.closest('.drag-handle')) return;
+    clearSelection();
     e.preventDefault();
     setSlashMenu(prev => ({ ...prev, isOpen: false }));
     startSelection(e);
-  }, [startSelection]);
+  }, [startSelection, clearSelection]);
 
   const handleBottomClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    clearSelection();
     const lastBlock = blocks[blocks.length - 1];
     if (lastBlock && lastBlock.type === 'text' && lastBlock.content === '') {
       focusBlock(lastBlock.id);
     } else {
       addBlock(lastBlock?.id);
     }
-  }, [blocks, addBlock]);
+  }, [blocks, addBlock, clearSelection]);
 
   const handlePageClick = useCallback((e: React.MouseEvent, pageBlocks: BlockData[]) => {
     if (e.target !== e.currentTarget) return;

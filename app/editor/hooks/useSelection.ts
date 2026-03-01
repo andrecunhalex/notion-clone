@@ -54,11 +54,21 @@ export const useSelection = ({ blocks, containerRef, blockRefs }: UseSelectionPr
       }
     };
 
+    // Clear selection on any click (except drag handle, to allow dragging selected blocks)
+    const onDocMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.drag-handle')) {
+        setSelectedIds(new Set());
+      }
+    };
+
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
+    document.addEventListener('mousedown', onDocMouseDown);
     return () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('mousedown', onDocMouseDown);
     };
   }, [containerRef, blockRefs]);
 

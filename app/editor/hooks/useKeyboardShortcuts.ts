@@ -26,6 +26,13 @@ export const useKeyboardShortcuts = ({
   
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape — clear selection
+      if (e.key === 'Escape' && selectedIds.size > 0) {
+        e.preventDefault();
+        setSelectedIds(new Set());
+        return;
+      }
+
       // Undo/Redo
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault();
