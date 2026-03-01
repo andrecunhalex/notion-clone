@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import { BlockData, SlashMenuState, ViewMode, NotionEditorProps } from './types';
-import { getPaginatedBlocks, focusBlock } from './utils';
+import { getPaginatedBlocks, focusBlock, createDefaultTableData } from './utils';
 import {
   useHistory,
   useBlockManager,
@@ -59,7 +59,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
 
   const { blockHeights, handleHeightChange } = usePagination({ blocks, setBlocks, viewMode });
 
-  const { updateBlock, addBlock, removeBlock, deleteSelectedBlocks, moveBlocks } = useBlockManager({
+  const { updateBlock, addBlock, addListBlock, removeBlock, deleteSelectedBlocks, moveBlocks } = useBlockManager({
     blocks, setBlocks
   });
 
@@ -166,11 +166,29 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       }
     }
 
-    const el = document.getElementById(`editable-${slashMenu.blockId}`);
-    if (el) el.innerText = cleanContent;
-    updateBlock(slashMenu.blockId, { type, content: cleanContent });
-    setSlashMenu(prev => ({ ...prev, isOpen: false }));
-    focusBlock(slashMenu.blockId);
+    if (type === 'table') {
+      const el = document.getElementById(`editable-${slashMenu.blockId}`);
+      if (el) el.innerText = '';
+      updateBlock(slashMenu.blockId, {
+        type,
+        content: '',
+        tableData: createDefaultTableData(),
+      });
+      setSlashMenu(prev => ({ ...prev, isOpen: false }));
+      // Focus first cell after render
+      setTimeout(() => {
+        const firstCell = document.querySelector(
+          `[data-table-cell="${slashMenu.blockId}-0-0"]`
+        ) as HTMLElement;
+        firstCell?.focus();
+      }, 50);
+    } else {
+      const el = document.getElementById(`editable-${slashMenu.blockId}`);
+      if (el) el.innerText = cleanContent;
+      updateBlock(slashMenu.blockId, { type, content: cleanContent });
+      setSlashMenu(prev => ({ ...prev, isOpen: false }));
+      focusBlock(slashMenu.blockId);
+    }
   }, [slashMenu.blockId, blocks, updateBlock]);
 
   const pages = getPaginatedBlocks(blocks, blockHeights, viewMode);
@@ -218,9 +236,12 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
                 key={block.id}
                 index={index}
                 block={block}
+                blocks={blocks}
+                globalIndex={blocks.findIndex(b => b.id === block.id)}
                 isSelected={selectedIds.has(block.id)}
                 updateBlock={updateBlock}
                 addBlock={addBlock}
+                addListBlock={addListBlock}
                 removeBlock={removeBlock}
                 setSlashMenu={setSlashMenu}
                 blockRef={el => (blockRefs.current[block.id] = el)}

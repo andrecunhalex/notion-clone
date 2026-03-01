@@ -1,11 +1,23 @@
 // --- Tipos do Editor ---
 
-export type BlockType = 'text' | 'h1' | 'h2';
+export type BlockType = 'text' | 'h1' | 'h2' | 'bullet_list' | 'numbered_list' | 'table';
+
+export interface TableCellData {
+  content: string;
+}
+
+export interface TableData {
+  rows: TableCellData[][];
+  columnWidths: number[];
+  hasHeaderRow: boolean;
+}
 
 export interface BlockData {
   id: string;
   type: BlockType;
   content: string;
+  indent?: number;
+  tableData?: TableData;
 }
 
 export interface SlashMenuState {

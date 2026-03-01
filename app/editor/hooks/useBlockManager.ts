@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { BlockData } from '../types';
+import { BlockData, BlockType } from '../types';
 import { generateId, focusBlock } from '../utils';
 
 interface UseBlockManagerProps {
@@ -47,6 +47,15 @@ export const useBlockManager = ({ blocks, setBlocks }: UseBlockManagerProps) => 
     setBlocks(newBlocks);
   }, [blocks, setBlocks]);
 
+  const addListBlock = useCallback((afterId: string, type: BlockType, indent: number = 0) => {
+    const index = blocks.findIndex(b => b.id === afterId);
+    const newBlock: BlockData = { id: generateId(), type, content: '', indent };
+    const newBlocks = [...blocks];
+    newBlocks.splice(index + 1, 0, newBlock);
+    setBlocks(newBlocks);
+    focusBlock(newBlock.id);
+  }, [blocks, setBlocks]);
+
   const moveBlocks = useCallback((
     idsToMove: string[],
     targetId: string,
@@ -66,6 +75,7 @@ export const useBlockManager = ({ blocks, setBlocks }: UseBlockManagerProps) => 
   return {
     updateBlock,
     addBlock,
+    addListBlock,
     removeBlock,
     deleteSelectedBlocks,
     moveBlocks

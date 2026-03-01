@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Type, Heading1, Heading2, LucideIcon } from 'lucide-react';
+import { Type, Heading1, Heading2, List, ListOrdered, Table, LucideIcon } from 'lucide-react';
 import { BlockType } from '../types';
 
 interface SlashMenuProps {
@@ -20,7 +20,10 @@ interface MenuOption {
 const MENU_OPTIONS: MenuOption[] = [
   { type: 'text', label: 'Texto', icon: Type },
   { type: 'h1', label: 'Título 1', icon: Heading1 },
-  { type: 'h2', label: 'Título 2', icon: Heading2 }
+  { type: 'h2', label: 'Título 2', icon: Heading2 },
+  { type: 'bullet_list', label: 'Lista com marcadores', icon: List },
+  { type: 'numbered_list', label: 'Lista numerada', icon: ListOrdered },
+  { type: 'table', label: 'Tabela', icon: Table },
 ];
 
 export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) => {
@@ -58,7 +61,7 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
 
   return (
     <div
-      className="fixed bg-white shadow-xl border border-gray-200 rounded-lg p-1 w-48 z-50 flex flex-col"
+      className="fixed w-fit bg-white shadow-xl border border-gray-200 rounded-lg p-1 z-50 flex flex-col"
       style={{ left: x, top: y }}
       onMouseDown={e => {
         e.preventDefault();

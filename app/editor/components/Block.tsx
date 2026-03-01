@@ -2,7 +2,9 @@
 
 import React, { useRef, useEffect, Dispatch, SetStateAction } from 'react';
 import { GripVertical } from 'lucide-react';
-import { BlockData, SlashMenuState, DropTarget } from '../types';
+import { BlockData, BlockType, SlashMenuState, DropTarget } from '../types';
+import { isListType, getBulletChar, getListNumber } from '../utils';
+import { TableBlock } from './TableBlock';
 
 interface BlockProps {
   block: BlockData;
@@ -10,6 +12,7 @@ interface BlockProps {
   isSelected: boolean;
   updateBlock: (id: string, updates: Partial<BlockData>) => void;
   addBlock: (afterId: string) => void;
+  addListBlock: (afterId: string, type: BlockType, indent: number) => void;
   removeBlock: (id: string) => void;
   setSlashMenu: Dispatch<SetStateAction<SlashMenuState>>;
   blockRef: (el: HTMLDivElement | null) => void;
@@ -19,12 +22,17 @@ interface BlockProps {
   dropTarget: DropTarget | null;
   onHeightChange: (id: string, height: number) => void;
   onClearSelection: () => void;
+  blocks: BlockData[];
+  globalIndex: number;
 }
 
 const BLOCK_STYLES: Record<string, string> = {
   h1: 'text-4xl font-bold my-0 p-0 text-gray-900 leading-none',
   h2: 'text-2xl font-semibold my-0 p-0 text-gray-800 leading-none',
-  text: 'text-base my-1 text-gray-700 leading-relaxed'
+  text: 'text-base my-1 text-gray-700 leading-relaxed',
+  bullet_list: 'text-base my-0 text-gray-700 leading-relaxed',
+  numbered_list: 'text-base my-0 text-gray-700 leading-relaxed',
+  table: '',
 };
 
 // Handle wrapper height matches each block's first line height for vertical centering
@@ -32,14 +40,17 @@ const HANDLE_LINE: Record<string, string> = {
   h1: 'h-9',             // 36px = text-4xl with leading-none
   h2: 'h-6',             // 24px = text-2xl with leading-none
   text: 'h-[26px] mt-1', // 26px = text-base * leading-relaxed, mt-1 matches text's my-1
+  bullet_list: 'h-[26px]',
+  numbered_list: 'h-[26px]',
+  table: 'h-6',
 };
 
 export const Block: React.FC<BlockProps> = ({
   block,
-  index,
   isSelected,
   updateBlock,
   addBlock,
+  addListBlock,
   removeBlock,
   setSlashMenu,
   blockRef,
@@ -48,7 +59,9 @@ export const Block: React.FC<BlockProps> = ({
   onDrop,
   dropTarget,
   onHeightChange,
-  onClearSelection
+  onClearSelection,
+  blocks,
+  globalIndex
 }) => {
   const internalRef = useRef<HTMLDivElement>(null);
 
@@ -58,7 +71,6 @@ export const Block: React.FC<BlockProps> = ({
 
       const ro = new ResizeObserver(() => {
         if (internalRef.current) {
-          // Usa offsetHeight para capturar altura total (conteúdo + padding + border)
           onHeightChange(block.id, internalRef.current.offsetHeight);
         }
       });
@@ -68,11 +80,11 @@ export const Block: React.FC<BlockProps> = ({
   }, [block.id, onHeightChange, blockRef]);
 
   useEffect(() => {
+    if (block.type === 'table') return;
     const el = document.getElementById(`editable-${block.id}`);
     if (el && el.innerText !== block.content) {
       const isFocused = document.activeElement === el;
       el.innerText = block.content;
-      // Restore cursor to end if block was focused (e.g. after undo/redo)
       if (isFocused && block.content) {
         const range = document.createRange();
         const sel = window.getSelection();
@@ -82,9 +94,23 @@ export const Block: React.FC<BlockProps> = ({
         sel?.addRange(range);
       }
     }
-  }, [block.content, block.id]);
+  }, [block.content, block.id, block.type]);
+
+  const isList = isListType(block.type);
+  const indent = block.indent ?? 0;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Tab indent/dedent for lists
+    if (e.key === 'Tab' && isList) {
+      e.preventDefault();
+      if (e.shiftKey) {
+        if (indent > 0) updateBlock(block.id, { indent: indent - 1 });
+      } else {
+        if (indent < 3) updateBlock(block.id, { indent: indent + 1 });
+      }
+      return;
+    }
+
     if (e.key === '/') {
       setTimeout(() => {
         const selection = window.getSelection();
@@ -102,12 +128,25 @@ export const Block: React.FC<BlockProps> = ({
 
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      addBlock(block.id);
+      if (isList) {
+        if (block.content.trim() === '') {
+          // Empty list item → convert to text
+          updateBlock(block.id, { type: 'text', indent: undefined });
+        } else {
+          addListBlock(block.id, block.type, indent);
+        }
+      } else {
+        addBlock(block.id);
+      }
     }
 
     if (e.key === 'Backspace' && (!block.content || block.content.trim() === '')) {
       e.preventDefault();
-      removeBlock(block.id);
+      if (isList) {
+        updateBlock(block.id, { type: 'text', indent: undefined });
+      } else {
+        removeBlock(block.id);
+      }
     }
 
     if (e.key === 'ArrowUp') {
@@ -130,6 +169,33 @@ export const Block: React.FC<BlockProps> = ({
       }
     }
   };
+
+  const renderListMarker = () => {
+    if (!isList) return null;
+    const paddingLeft = indent * 24;
+    if (block.type === 'bullet_list') {
+      return (
+        <span
+          className="select-none text-gray-400 shrink-0 inline-flex items-center justify-center"
+          style={{ width: 24 + paddingLeft, paddingLeft }}
+        >
+          {getBulletChar(indent)}
+        </span>
+      );
+    }
+    // numbered_list
+    const num = getListNumber(block, blocks, globalIndex);
+    return (
+      <span
+        className="select-none text-gray-400 shrink-0 inline-flex items-center justify-end pr-1"
+        style={{ minWidth: 24 + paddingLeft, paddingLeft }}
+      >
+        {num}.
+      </span>
+    );
+  };
+
+  const isTable = block.type === 'table';
 
   return (
     <div
@@ -162,16 +228,23 @@ export const Block: React.FC<BlockProps> = ({
       <div className={`flex-1 min-w-0 notion-block-content py-0.5 px-1 rounded-sm transition-colors ${
         isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'
       }`}>
-        <div
-          id={`editable-${block.id}`}
-          contentEditable
-          suppressContentEditableWarning
-          className={`outline-none empty:before:text-gray-300 cursor-text ${BLOCK_STYLES[block.type]} focus:empty:before:content-[attr(data-placeholder)]`}
-          data-placeholder="Digite '/' para comandos..."
-          onKeyDown={handleKeyDown}
-          onInput={e => updateBlock(block.id, { content: e.currentTarget.innerText })}
-          onFocus={onClearSelection}
-        />
+        {isTable ? (
+          <TableBlock block={block} updateBlock={updateBlock} />
+        ) : (
+          <div className={`flex items-start ${isList ? '' : ''}`}>
+            {renderListMarker()}
+            <div
+              id={`editable-${block.id}`}
+              contentEditable
+              suppressContentEditableWarning
+              className={`outline-none empty:before:text-gray-300 cursor-text flex-1 min-w-0 ${BLOCK_STYLES[block.type]} focus:empty:before:content-[attr(data-placeholder)]`}
+              data-placeholder={isList ? 'Lista...' : "Digite '/' para comandos..."}
+              onKeyDown={handleKeyDown}
+              onInput={e => updateBlock(block.id, { content: e.currentTarget.innerText })}
+              onFocus={onClearSelection}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

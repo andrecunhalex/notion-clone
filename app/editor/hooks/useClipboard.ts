@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
-import { BlockData } from '../types';
-import { generateId } from '../utils';
+import { BlockData, TableCellData } from '../types';
+import { generateId, createDefaultTableData } from '../utils';
 
 // Marker used to detect our own clipboard data inside HTML
 const CLIPBOARD_MARKER = 'data-nc-blocks';
@@ -43,6 +43,40 @@ function parseHtmlToBlocks(html: string): BlockData[] | null {
   const doc = parser.parseFromString(html, 'text/html');
   const blocks: BlockData[] = [];
 
+  const processListItems = (listEl: Element, type: 'bullet_list' | 'numbered_list', indent: number) => {
+    listEl.childNodes.forEach(child => {
+      if (child.nodeType !== Node.ELEMENT_NODE) return;
+      const childEl = child as Element;
+      const tag = childEl.tagName.toLowerCase();
+      if (tag === 'li') {
+        // Get direct text content (not nested lists)
+        let textContent = '';
+        let nestedList: Element | null = null;
+        childEl.childNodes.forEach(liChild => {
+          if (liChild.nodeType === Node.ELEMENT_NODE) {
+            const liChildTag = (liChild as Element).tagName.toLowerCase();
+            if (liChildTag === 'ul' || liChildTag === 'ol') {
+              nestedList = liChild as Element;
+            } else {
+              textContent += getInnerText(liChild);
+            }
+          } else {
+            textContent += liChild.textContent || '';
+          }
+        });
+        blocks.push({ id: generateId(), type, content: textContent, indent });
+        if (nestedList) {
+          const nestedTag = (nestedList as Element).tagName.toLowerCase();
+          processListItems(
+            nestedList,
+            nestedTag === 'ol' ? 'numbered_list' : 'bullet_list',
+            indent + 1
+          );
+        }
+      }
+    });
+  };
+
   const processNode = (node: Node) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent?.trim();
@@ -63,14 +97,45 @@ function parseHtmlToBlocks(html: string): BlockData[] | null {
     } else if (tag === 'h2' || tag === 'h3') {
       blocks.push({ id: generateId(), type: 'h2', content: getInnerText(el) });
     } else if (tag === 'p') {
-      // Always create block (even if empty — preserves spacing like Notion)
       blocks.push({ id: generateId(), type: 'text', content: getInnerText(el) });
-    } else if (tag === 'ul' || tag === 'ol') {
-      el.childNodes.forEach(child => processNode(child));
+    } else if (tag === 'ul') {
+      processListItems(el, 'bullet_list', 0);
+    } else if (tag === 'ol') {
+      processListItems(el, 'numbered_list', 0);
     } else if (tag === 'li') {
-      blocks.push({ id: generateId(), type: 'text', content: getInnerText(el) });
+      // Orphan li — treat as bullet
+      blocks.push({ id: generateId(), type: 'bullet_list', content: getInnerText(el), indent: 0 });
+    } else if (tag === 'table') {
+      // Parse table
+      const tableRows: TableCellData[][] = [];
+      const trs = el.querySelectorAll('tr');
+      trs.forEach(tr => {
+        const cells: TableCellData[] = [];
+        tr.querySelectorAll('td, th').forEach(cell => {
+          cells.push({ content: getInnerText(cell) });
+        });
+        if (cells.length > 0) tableRows.push(cells);
+      });
+      if (tableRows.length > 0) {
+        const colCount = Math.max(...tableRows.map(r => r.length));
+        // Normalize rows to same column count
+        const normalizedRows = tableRows.map(row => {
+          while (row.length < colCount) row.push({ content: '' });
+          return row;
+        });
+        const colWidths = Array(colCount).fill(100 / colCount);
+        blocks.push({
+          id: generateId(),
+          type: 'table',
+          content: '',
+          tableData: {
+            rows: normalizedRows,
+            columnWidths: colWidths,
+            hasHeaderRow: el.querySelector('th') !== null,
+          },
+        });
+      }
     } else if (tag === 'div' || tag === 'article' || tag === 'section' || tag === 'main') {
-      // Container: check if it has block-level children
       const hasBlockChildren = Array.from(el.children).some(c =>
         BLOCK_TAGS.has(c.tagName.toLowerCase())
       );
@@ -81,7 +146,6 @@ function parseHtmlToBlocks(html: string): BlockData[] | null {
         blocks.push({ id: generateId(), type: 'text', content });
       }
     } else {
-      // Other elements — extract text if any
       const content = getInnerText(el);
       if (content.trim()) {
         blocks.push({ id: generateId(), type: 'text', content });
@@ -94,28 +158,89 @@ function parseHtmlToBlocks(html: string): BlockData[] | null {
 }
 
 /** Convert blocks to HTML for external paste */
-function blocksToHtml(blocks: BlockData[]): string {
-  return blocks.map(b => {
+function blocksToHtml(blockList: BlockData[]): string {
+  const parts: string[] = [];
+  let i = 0;
+
+  while (i < blockList.length) {
+    const b = blockList[i];
     const content = (b.content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>');
-    switch (b.type) {
-      case 'h1': return `<h1>${content}</h1>`;
-      case 'h2': return `<h2>${content}</h2>`;
-      default: return `<p>${content}</p>`;
+
+    if (b.type === 'h1') {
+      parts.push(`<h1>${content}</h1>`);
+    } else if (b.type === 'h2') {
+      parts.push(`<h2>${content}</h2>`);
+    } else if (b.type === 'bullet_list') {
+      parts.push('<ul>');
+      while (i < blockList.length && blockList[i].type === 'bullet_list') {
+        const item = blockList[i];
+        const itemContent = (item.content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>');
+        parts.push(`<li>${itemContent}</li>`);
+        i++;
+      }
+      parts.push('</ul>');
+      continue;
+    } else if (b.type === 'numbered_list') {
+      parts.push('<ol>');
+      while (i < blockList.length && blockList[i].type === 'numbered_list') {
+        const item = blockList[i];
+        const itemContent = (item.content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>');
+        parts.push(`<li>${itemContent}</li>`);
+        i++;
+      }
+      parts.push('</ol>');
+      continue;
+    } else if (b.type === 'table' && b.tableData) {
+      parts.push('<table>');
+      b.tableData.rows.forEach((row, rowIdx) => {
+        parts.push('<tr>');
+        const cellTag = b.tableData!.hasHeaderRow && rowIdx === 0 ? 'th' : 'td';
+        row.forEach(cell => {
+          const cellContent = (cell.content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+          parts.push(`<${cellTag}>${cellContent}</${cellTag}>`);
+        });
+        parts.push('</tr>');
+      });
+      parts.push('</table>');
+    } else {
+      parts.push(`<p>${content}</p>`);
     }
-  }).join('');
+    i++;
+  }
+
+  return parts.join('');
 }
 
 /** Convert blocks to plain text */
-function blocksToText(blocks: BlockData[]): string {
-  return blocks.map(b => b.content).join('\n');
+function blocksToText(blockList: BlockData[]): string {
+  return blockList.map(b => {
+    if (b.type === 'bullet_list') {
+      const indent = '  '.repeat(b.indent ?? 0);
+      return `${indent}${getBulletPrefix(b.indent ?? 0)} ${b.content}`;
+    }
+    if (b.type === 'numbered_list') {
+      const indent = '  '.repeat(b.indent ?? 0);
+      return `${indent}1. ${b.content}`;
+    }
+    if (b.type === 'table' && b.tableData) {
+      return b.tableData.rows
+        .map(row => row.map(cell => cell.content).join('\t'))
+        .join('\n');
+    }
+    return b.content;
+  }).join('\n');
+}
+
+function getBulletPrefix(indent: number): string {
+  const chars = ['•', '◦', '▪'];
+  return chars[Math.min(indent, chars.length - 1)];
 }
 
 /**
  * Parse plain text into blocks, line by line.
- * - Single \n within text = line break inside a block
- * - First blank line after text = end of that block
- * - Consecutive blank lines = empty blocks (one per extra blank line)
  * - Supports # / ## markdown headings
+ * - Detects `- ` or `* ` as bullet_list
+ * - Detects `1. ` (number prefix) as numbered_list
  */
 function parsePlainTextToBlocks(text: string): BlockData[] | null {
   if (!text) return null;
@@ -144,12 +269,36 @@ function parsePlainTextToBlocks(text: string): BlockData[] | null {
   };
 
   for (const line of lines) {
-    if (line.trim() === '') {
+    const trimmed = line.trim();
+
+    // Detect list items
+    if (/^[-*]\s+/.test(trimmed)) {
+      flushCurrent();
+      const indent = Math.floor((line.length - line.trimStart().length) / 2);
+      blocks.push({
+        id: generateId(),
+        type: 'bullet_list',
+        content: trimmed.replace(/^[-*]\s+/, ''),
+        indent: Math.min(indent, 3),
+      });
+      continue;
+    }
+    if (/^\d+\.\s+/.test(trimmed)) {
+      flushCurrent();
+      const indent = Math.floor((line.length - line.trimStart().length) / 2);
+      blocks.push({
+        id: generateId(),
+        type: 'numbered_list',
+        content: trimmed.replace(/^\d+\.\s+/, ''),
+        indent: Math.min(indent, 3),
+      });
+      continue;
+    }
+
+    if (trimmed === '') {
       if (currentLines.length > 0) {
-        // End of current block
         flushCurrent();
       } else {
-        // Consecutive blank line → empty block
         blocks.push({ id: generateId(), type: 'text', content: '' });
       }
     } else {

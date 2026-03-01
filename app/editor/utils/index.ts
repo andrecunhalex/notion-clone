@@ -1,4 +1,4 @@
-import { BlockData } from '../types';
+import { BlockData, BlockType, TableData } from '../types';
 
 // Gera ID único
 export const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -8,6 +8,42 @@ export const createEmptyBlock = (): BlockData => ({
   id: generateId(),
   type: 'text',
   content: ''
+});
+
+// --- List helpers ---
+
+export const isListType = (type: BlockType): boolean =>
+  type === 'bullet_list' || type === 'numbered_list';
+
+const BULLET_CHARS = ['•', '◦', '▪', '▪'];
+
+export const getBulletChar = (indent: number): string =>
+  BULLET_CHARS[Math.min(indent, BULLET_CHARS.length - 1)];
+
+export const getListNumber = (
+  block: BlockData,
+  blocks: BlockData[],
+  globalIndex: number
+): number => {
+  let count = 1;
+  const indent = block.indent ?? 0;
+  for (let i = globalIndex - 1; i >= 0; i--) {
+    const prev = blocks[i];
+    if (prev.type !== 'numbered_list') break;
+    if ((prev.indent ?? 0) === indent) count++;
+    else if ((prev.indent ?? 0) < indent) break;
+  }
+  return count;
+};
+
+// --- Table helpers ---
+
+export const createDefaultTableData = (): TableData => ({
+  rows: Array.from({ length: 3 }, () =>
+    Array.from({ length: 3 }, () => ({ content: '' }))
+  ),
+  columnWidths: [33.33, 33.33, 33.34],
+  hasHeaderRow: true,
 });
 
 // Constantes de paginação (A4 em pixels ~96dpi: 794x1123, com margens de 20mm = ~75px cada lado)

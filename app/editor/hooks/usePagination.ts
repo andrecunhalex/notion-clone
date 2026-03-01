@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useState } from 'react';
 import { BlockData, ViewMode } from '../types';
-import { generateId, PAGE_CONTENT_HEIGHT } from '../utils';
+import { generateId, PAGE_CONTENT_HEIGHT, isListType } from '../utils';
 
 interface UsePaginationProps {
   blocks: BlockData[];
@@ -29,8 +29,10 @@ export const usePagination = ({ blocks, setBlocks, viewMode }: UsePaginationProp
     for (const block of blocks) {
       const h = blockHeights[block.id] || 24;
 
-      // Bloco maior que página inteira - tenta quebrar se for texto
-      if (h >= PAGE_CONTENT_HEIGHT && block.type === 'text') {
+      const canSplit = block.type === 'text' || isListType(block.type);
+
+      // Bloco maior que página inteira - tenta quebrar se for texto/lista (não tabela)
+      if (h >= PAGE_CONTENT_HEIGHT && canSplit) {
         splitAction = { id: block.id, splitPoint: PAGE_CONTENT_HEIGHT - 50 };
         break;
       }
@@ -38,8 +40,8 @@ export const usePagination = ({ blocks, setBlocks, viewMode }: UsePaginationProp
       if (currentH + h > PAGE_CONTENT_HEIGHT) {
         const availableH = PAGE_CONTENT_HEIGHT - currentH;
 
-        // Quebra se for texto, houver espaço (>50px) e o bloco for maior que o espaço
-        if (block.type === 'text' && availableH > 50 && h > availableH) {
+        // Quebra se for texto/lista, houver espaço (>50px) e o bloco for maior que o espaço
+        if (canSplit && availableH > 50 && h > availableH) {
           splitAction = { id: block.id, splitPoint: availableH };
           break;
         }
