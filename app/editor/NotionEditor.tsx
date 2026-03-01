@@ -70,7 +70,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     blocks, selectedIds, setSelectedIds, blockRefs, moveBlocks
   });
 
-  const { handleCopy, handlePaste } = useClipboard({ blocks, setBlocks, selectedIds });
+  const { handleCopy, handlePaste } = useClipboard({ blocks, setBlocks, selectedIds, setSelectedIds });
 
   useKeyboardShortcuts({
     blocks, setBlocks, selectedIds, setSelectedIds,
