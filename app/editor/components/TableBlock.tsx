@@ -7,6 +7,7 @@ import { BlockData, TableData } from '../types';
 interface TableBlockProps {
   block: BlockData;
   updateBlock: (id: string, updates: Partial<BlockData>) => void;
+  onNavigateOut?: (direction: 'up' | 'down') => void;
 }
 
 interface ContextMenu {
@@ -16,7 +17,7 @@ interface ContextMenu {
   colIdx: number;
 }
 
-export const TableBlock: React.FC<TableBlockProps> = ({ block, updateBlock }) => {
+export const TableBlock: React.FC<TableBlockProps> = ({ block, updateBlock, onNavigateOut }) => {
   const tableData = block.tableData;
   const tableRef = useRef<HTMLTableElement>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -140,7 +141,78 @@ export const TableBlock: React.FC<TableBlockProps> = ({ block, updateBlock }) =>
         nextCell?.focus();
       }
     }
-  }, [block.id, rows, columnWidths.length]);
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextRow = rowIdx + 1;
+      if (nextRow < rows.length) {
+        const nextCell = document.querySelector(
+          `[data-table-cell="${block.id}-${nextRow}-${colIdx}"]`
+        ) as HTMLElement;
+        nextCell?.focus();
+      } else {
+        onNavigateOut?.('down');
+      }
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prevRow = rowIdx - 1;
+      if (prevRow >= 0) {
+        const prevCell = document.querySelector(
+          `[data-table-cell="${block.id}-${prevRow}-${colIdx}"]`
+        ) as HTMLElement;
+        prevCell?.focus();
+      } else {
+        onNavigateOut?.('up');
+      }
+    }
+
+    if (e.key === 'ArrowLeft') {
+      const sel = window.getSelection();
+      if (sel && sel.isCollapsed && sel.anchorOffset === 0) {
+        e.preventDefault();
+        let prevCol = colIdx - 1;
+        let prevRow = rowIdx;
+        if (prevCol < 0) {
+          prevRow--;
+          prevCol = columnWidths.length - 1;
+        }
+        if (prevRow >= 0) {
+          const prevCell = document.querySelector(
+            `[data-table-cell="${block.id}-${prevRow}-${prevCol}"]`
+          ) as HTMLElement;
+          prevCell?.focus();
+        } else {
+          onNavigateOut?.('up');
+        }
+      }
+    }
+
+    if (e.key === 'ArrowRight') {
+      const sel = window.getSelection();
+      if (sel && sel.isCollapsed) {
+        const textLen = e.currentTarget.textContent?.length ?? 0;
+        if (sel.anchorOffset >= textLen) {
+          e.preventDefault();
+          let nextCol = colIdx + 1;
+          let nextRow = rowIdx;
+          if (nextCol >= columnWidths.length) {
+            nextRow++;
+            nextCol = 0;
+          }
+          if (nextRow < rows.length) {
+            const nextCell = document.querySelector(
+              `[data-table-cell="${block.id}-${nextRow}-${nextCol}"]`
+            ) as HTMLElement;
+            nextCell?.focus();
+          } else {
+            onNavigateOut?.('down');
+          }
+        }
+      }
+    }
+  }, [block.id, rows, columnWidths.length, onNavigateOut]);
 
   const handleContextMenu = useCallback((
     e: React.MouseEvent,
@@ -244,7 +316,7 @@ export const TableBlock: React.FC<TableBlockProps> = ({ block, updateBlock }) =>
               {row.map((cell, colIdx) => (
                 <td
                   key={colIdx}
-                  className={`border border-gray-200 relative ${
+                  className={`border border-gray-200 relative has-focus:shadow-[inset_0_0_0_2px_#3b82f6] ${
                     hasHeaderRow && rowIdx === 0
                       ? 'bg-gray-50 font-medium'
                       : 'bg-white'

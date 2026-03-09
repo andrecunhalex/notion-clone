@@ -154,7 +154,9 @@ export const Block: React.FC<BlockProps> = ({
       const blockContainer = currentEl?.closest('.group');
       const prev = blockContainer?.previousSibling as HTMLElement;
       if (prev) {
-        const editable = prev.querySelector('[contenteditable]') as HTMLElement;
+        // When going UP into a table, focus the last cell (bottom-right)
+        const editables = prev.querySelectorAll('[contenteditable]');
+        const editable = editables[editables.length - 1] as HTMLElement;
         if (editable) editable.focus();
       }
     }
@@ -166,6 +168,12 @@ export const Block: React.FC<BlockProps> = ({
       if (next) {
         const editable = next.querySelector('[contenteditable]') as HTMLElement;
         if (editable) editable.focus();
+      } else if (globalIndex === blocks.length - 1) {
+        // Last block — if empty just stay, otherwise create a new one
+        e.preventDefault();
+        if (block.content.trim() !== '') {
+          addBlock(block.id);
+        }
       }
     }
   };
@@ -229,7 +237,30 @@ export const Block: React.FC<BlockProps> = ({
         isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'
       }`}>
         {isTable ? (
-          <TableBlock block={block} updateBlock={updateBlock} />
+          <TableBlock
+            block={block}
+            updateBlock={updateBlock}
+            onNavigateOut={(direction) => {
+              const blockContainer = internalRef.current;
+              if (direction === 'down') {
+                const next = blockContainer?.nextSibling as HTMLElement;
+                if (next) {
+                  const editable = next.querySelector('[contenteditable]') as HTMLElement;
+                  if (editable) editable.focus();
+                } else if (globalIndex === blocks.length - 1) {
+                  addBlock(block.id);
+                }
+              } else {
+                const prev = blockContainer?.previousSibling as HTMLElement;
+                if (prev) {
+                  // When going UP, focus the last contenteditable (e.g. last cell of a table above)
+                  const editables = prev.querySelectorAll('[contenteditable]');
+                  const editable = editables[editables.length - 1] as HTMLElement;
+                  if (editable) editable.focus();
+                }
+              }
+            }}
+          />
         ) : (
           <div className={`flex items-start ${isList ? '' : ''}`}>
             {renderListMarker()}

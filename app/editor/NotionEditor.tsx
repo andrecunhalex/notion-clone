@@ -87,20 +87,34 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     startSelection(e);
   }, [startSelection, clearSelection]);
 
-  const handleBottomClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    clearSelection();
+  const createOrFocusLastBlock = useCallback(() => {
     const lastBlock = blocks[blocks.length - 1];
     if (lastBlock && lastBlock.type === 'text' && lastBlock.content === '') {
       focusBlock(lastBlock.id);
     } else {
       addBlock(lastBlock?.id);
     }
-  }, [blocks, addBlock, clearSelection]);
+  }, [blocks, addBlock]);
 
-  const handlePageClick = useCallback((e: React.MouseEvent, pageBlocks: BlockData[]) => {
+  // Use onMouseDown instead of onClick for cross-platform reliability.
+  // On Windows, e.preventDefault() in the parent's handleMouseDown can
+  // suppress subsequent click events, so we handle it on mousedown
+  // and stopPropagation to prevent the parent's drag-selection start.
+  const handleBottomMouseDown = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    clearSelection();
+    createOrFocusLastBlock();
+  }, [clearSelection, createOrFocusLastBlock]);
+
+  const handlePageMouseDown = useCallback((e: React.MouseEvent, pageBlocks: BlockData[]) => {
     if (e.target !== e.currentTarget) return;
-    if (didDragSelect()) return;
+
+    // Stop propagation to prevent parent's handleMouseDown from calling
+    // preventDefault / startSelection, which can swallow clicks on Windows.
+    e.stopPropagation();
+    e.preventDefault();
+    clearSelection();
 
     const blocksOnPage = pageBlocks
       .map(b => document.getElementById(`editable-${b.id}`))
@@ -111,13 +125,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     const lastBlockEl = blocksOnPage[blocksOnPage.length - 1];
     const lastRect = lastBlockEl.getBoundingClientRect();
     if (e.clientY > lastRect.bottom) {
-      // Click is below all blocks — create or focus empty last block
-      const lastBlock = blocks[blocks.length - 1];
-      if (lastBlock && lastBlock.type === 'text' && lastBlock.content === '') {
-        focusBlock(lastBlock.id);
-      } else {
-        addBlock(lastBlock?.id);
-      }
+      createOrFocusLastBlock();
       return;
     }
 
@@ -140,7 +148,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       sel.removeAllRanges();
       sel.addRange(range);
     }
-  }, [didDragSelect, blocks, addBlock]);
+  }, [blocks, clearSelection, createOrFocusLastBlock]);
 
   const handleSlashMenuSelect = useCallback((type: BlockData['type']) => {
     if (!slashMenu.blockId) return;
@@ -229,7 +237,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
                 ? 'min-h-[297mm] bg-white shadow-lg px-[20mm] py-[15mm] mb-8 mx-auto max-w-[210mm]'
                 : ''
             }
-            onClick={e => handlePageClick(e, pageBlocks)}
+            onMouseDown={e => handlePageMouseDown(e, pageBlocks)}
           >
             {pageBlocks.map((block, index) => (
               <Block
@@ -256,7 +264,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           </div>
         ))}
 
-        <div className="h-32 -mx-12 cursor-text" onClick={handleBottomClick} />
+        <div className="h-32 -mx-12 cursor-text" onMouseDown={handleBottomMouseDown} />
       </div>
 
       <SelectionOverlay selectionBox={selectionBox} containerRef={containerRef} />
