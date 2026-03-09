@@ -52,10 +52,12 @@ export const useDragAndDrop = ({
         text: 'Texto vazio',
         h1: 'Título vazio',
         h2: 'Subtítulo vazio',
+        h3: 'Subtítulo vazio',
         bullet_list: 'Item com marcador',
         numbered_list: 'Item numerado',
         table: 'Tabela',
-      }[b.type]);
+        divider: '———',
+      } as Record<string, string>)[b.type] || '';
 
       Object.assign(div.style, {
         fontSize: '12px', color: '#374151', marginBottom: '4px',

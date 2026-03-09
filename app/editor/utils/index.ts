@@ -43,7 +43,7 @@ export const createDefaultTableData = (): TableData => ({
     Array.from({ length: 3 }, () => ({ content: '' }))
   ),
   columnWidths: [33.33, 33.33, 33.34],
-  hasHeaderRow: true,
+  hasHeaderRow: false,
 });
 
 // Constantes de paginação (A4 em pixels ~96dpi: 794x1123, com margens de 20mm = ~75px cada lado)

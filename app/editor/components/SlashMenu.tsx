@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Type, Heading1, Heading2, List, ListOrdered, Table, LucideIcon } from 'lucide-react';
+import { Type, Heading1, Heading2, Heading3, List, ListOrdered, Table, Minus, LucideIcon } from 'lucide-react';
 import { BlockType } from '../types';
 
 interface SlashMenuProps {
@@ -21,8 +21,10 @@ const MENU_OPTIONS: MenuOption[] = [
   { type: 'text', label: 'Texto', icon: Type },
   { type: 'h1', label: 'Título 1', icon: Heading1 },
   { type: 'h2', label: 'Título 2', icon: Heading2 },
+  { type: 'h3', label: 'Título 3', icon: Heading3 },
   { type: 'bullet_list', label: 'Lista com marcadores', icon: List },
   { type: 'numbered_list', label: 'Lista numerada', icon: ListOrdered },
+  { type: 'divider', label: 'Divisor', icon: Minus },
   { type: 'table', label: 'Tabela', icon: Table },
 ];
 

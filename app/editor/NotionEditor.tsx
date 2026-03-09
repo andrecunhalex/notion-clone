@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import { BlockData, SlashMenuState, ViewMode, NotionEditorProps } from './types';
-import { getPaginatedBlocks, focusBlock, createDefaultTableData } from './utils';
+import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId } from './utils';
 import {
   useHistory,
   useBlockManager,
@@ -78,43 +78,29 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   });
 
   // Único handler de mouse — o resto é via listeners nativos no document
+  // NOTE: não usa preventDefault() para não bloquear onClick em Windows
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.closest('.notion-block-content') || target.closest('.drag-handle')) return;
     clearSelection();
-    e.preventDefault();
     setSlashMenu(prev => ({ ...prev, isOpen: false }));
     startSelection(e);
   }, [startSelection, clearSelection]);
 
-  const createOrFocusLastBlock = useCallback(() => {
+  const handleBottomClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    clearSelection();
     const lastBlock = blocks[blocks.length - 1];
     if (lastBlock && lastBlock.type === 'text' && lastBlock.content === '') {
       focusBlock(lastBlock.id);
     } else {
       addBlock(lastBlock?.id);
     }
-  }, [blocks, addBlock]);
+  }, [blocks, addBlock, clearSelection]);
 
-  // Use onMouseDown instead of onClick for cross-platform reliability.
-  // On Windows, e.preventDefault() in the parent's handleMouseDown can
-  // suppress subsequent click events, so we handle it on mousedown
-  // and stopPropagation to prevent the parent's drag-selection start.
-  const handleBottomMouseDown = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    clearSelection();
-    createOrFocusLastBlock();
-  }, [clearSelection, createOrFocusLastBlock]);
-
-  const handlePageMouseDown = useCallback((e: React.MouseEvent, pageBlocks: BlockData[]) => {
+  const handlePageClick = useCallback((e: React.MouseEvent, pageBlocks: BlockData[]) => {
     if (e.target !== e.currentTarget) return;
-
-    // Stop propagation to prevent parent's handleMouseDown from calling
-    // preventDefault / startSelection, which can swallow clicks on Windows.
-    e.stopPropagation();
-    e.preventDefault();
-    clearSelection();
+    if (didDragSelect()) return;
 
     const blocksOnPage = pageBlocks
       .map(b => document.getElementById(`editable-${b.id}`))
@@ -125,7 +111,12 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     const lastBlockEl = blocksOnPage[blocksOnPage.length - 1];
     const lastRect = lastBlockEl.getBoundingClientRect();
     if (e.clientY > lastRect.bottom) {
-      createOrFocusLastBlock();
+      const lastBlock = blocks[blocks.length - 1];
+      if (lastBlock && lastBlock.type === 'text' && lastBlock.content === '') {
+        focusBlock(lastBlock.id);
+      } else {
+        addBlock(lastBlock?.id);
+      }
       return;
     }
 
@@ -148,7 +139,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       sel.removeAllRanges();
       sel.addRange(range);
     }
-  }, [blocks, clearSelection, createOrFocusLastBlock]);
+  }, [didDragSelect, blocks, addBlock]);
 
   const handleSlashMenuSelect = useCallback((type: BlockData['type']) => {
     if (!slashMenu.blockId) return;
@@ -174,7 +165,18 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       }
     }
 
-    if (type === 'table') {
+    if (type === 'divider') {
+      const el = document.getElementById(`editable-${slashMenu.blockId}`);
+      if (el) el.innerText = '';
+      // Do both update + add in a single setBlocks to avoid stale closure
+      const idx = blocks.findIndex(b => b.id === slashMenu.blockId);
+      const newTextBlock: BlockData = { id: generateId(), type: 'text', content: '' };
+      const newBlocks = blocks.map(b => b.id === slashMenu.blockId ? { ...b, type: 'divider' as const, content: '' } : b);
+      newBlocks.splice(idx + 1, 0, newTextBlock);
+      setBlocks(newBlocks);
+      setSlashMenu(prev => ({ ...prev, isOpen: false }));
+      focusBlock(newTextBlock.id);
+    } else if (type === 'table') {
       const el = document.getElementById(`editable-${slashMenu.blockId}`);
       if (el) el.innerText = '';
       updateBlock(slashMenu.blockId, {
@@ -237,7 +239,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
                 ? 'min-h-[297mm] bg-white shadow-lg px-[20mm] py-[15mm] mb-8 mx-auto max-w-[210mm]'
                 : ''
             }
-            onMouseDown={e => handlePageMouseDown(e, pageBlocks)}
+            onClick={e => handlePageClick(e, pageBlocks)}
           >
             {pageBlocks.map((block, index) => (
               <Block
@@ -264,7 +266,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           </div>
         ))}
 
-        <div className="h-32 -mx-12 cursor-text" onMouseDown={handleBottomMouseDown} />
+        <div className="h-32 -mx-12 cursor-text" onClick={handleBottomClick} />
       </div>
 
       <SelectionOverlay selectionBox={selectionBox} containerRef={containerRef} />

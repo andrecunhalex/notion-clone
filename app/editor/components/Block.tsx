@@ -29,9 +29,11 @@ interface BlockProps {
 const BLOCK_STYLES: Record<string, string> = {
   h1: 'text-4xl font-bold my-0 p-0 text-gray-900 leading-none',
   h2: 'text-2xl font-semibold my-0 p-0 text-gray-800 leading-none',
+  h3: 'text-xl font-semibold my-0 p-0 text-gray-800 leading-none',
   text: 'text-base my-1 text-gray-700 leading-relaxed',
   bullet_list: 'text-base my-0 text-gray-700 leading-relaxed',
   numbered_list: 'text-base my-0 text-gray-700 leading-relaxed',
+  divider: '',
   table: '',
 };
 
@@ -39,9 +41,11 @@ const BLOCK_STYLES: Record<string, string> = {
 const HANDLE_LINE: Record<string, string> = {
   h1: 'h-9',             // 36px = text-4xl with leading-none
   h2: 'h-6',             // 24px = text-2xl with leading-none
+  h3: 'h-5',             // 20px = text-xl with leading-none
   text: 'h-[26px] mt-1', // 26px = text-base * leading-relaxed, mt-1 matches text's my-1
   bullet_list: 'h-[26px]',
   numbered_list: 'h-[26px]',
+  divider: 'h-4',
   table: 'h-6',
 };
 
@@ -80,7 +84,7 @@ export const Block: React.FC<BlockProps> = ({
   }, [block.id, onHeightChange, blockRef]);
 
   useEffect(() => {
-    if (block.type === 'table') return;
+    if (block.type === 'table' || block.type === 'divider') return;
     const el = document.getElementById(`editable-${block.id}`);
     if (el && el.innerText !== block.content) {
       const isFocused = document.activeElement === el;
@@ -152,23 +156,61 @@ export const Block: React.FC<BlockProps> = ({
     if (e.key === 'ArrowUp') {
       const currentEl = document.getElementById(`editable-${block.id}`);
       const blockContainer = currentEl?.closest('.group');
-      const prev = blockContainer?.previousSibling as HTMLElement;
-      if (prev) {
-        // When going UP into a table, focus the last cell (bottom-right)
-        const editables = prev.querySelectorAll('[contenteditable]');
-        const editable = editables[editables.length - 1] as HTMLElement;
-        if (editable) editable.focus();
+      // Walk backwards through siblings, crossing page boundaries, skipping dividers
+      let candidate = blockContainer?.previousSibling as HTMLElement | null;
+      if (!candidate) {
+        // Cross page boundary: go to previous page's last block
+        const page = blockContainer?.parentElement;
+        const prevPage = page?.previousElementSibling as HTMLElement | null;
+        if (prevPage) candidate = prevPage.lastElementChild as HTMLElement | null;
+      }
+      while (candidate) {
+        const editables = candidate.querySelectorAll('[contenteditable]');
+        if (editables.length > 0) {
+          // Focus last editable (bottom-right for tables)
+          (editables[editables.length - 1] as HTMLElement).focus();
+          break;
+        }
+        // Skip this block (divider), try next one up
+        const prev = candidate.previousSibling as HTMLElement | null;
+        if (prev) {
+          candidate = prev;
+        } else {
+          const page = candidate.parentElement;
+          const prevPage = page?.previousElementSibling as HTMLElement | null;
+          candidate = prevPage ? prevPage.lastElementChild as HTMLElement | null : null;
+        }
       }
     }
 
     if (e.key === 'ArrowDown') {
       const currentEl = document.getElementById(`editable-${block.id}`);
       const blockContainer = currentEl?.closest('.group');
-      const next = blockContainer?.nextSibling as HTMLElement;
-      if (next) {
-        const editable = next.querySelector('[contenteditable]') as HTMLElement;
-        if (editable) editable.focus();
-      } else if (globalIndex === blocks.length - 1) {
+      // Walk forwards through siblings, crossing page boundaries, skipping dividers
+      let candidate = blockContainer?.nextSibling as HTMLElement | null;
+      if (!candidate) {
+        // Cross page boundary: go to next page's first block
+        const page = blockContainer?.parentElement;
+        const nextPage = page?.nextElementSibling as HTMLElement | null;
+        if (nextPage) candidate = nextPage.firstElementChild as HTMLElement | null;
+      }
+      while (candidate) {
+        const editable = candidate.querySelector('[contenteditable]') as HTMLElement | null;
+        if (editable) {
+          editable.focus();
+          break;
+        }
+        // Skip this block (divider), try next one down
+        const next = candidate.nextSibling as HTMLElement | null;
+        if (next) {
+          candidate = next;
+        } else {
+          const page = candidate.parentElement;
+          const nextPage = page?.nextElementSibling as HTMLElement | null;
+          candidate = nextPage ? nextPage.firstElementChild as HTMLElement | null : null;
+        }
+      }
+      if (!candidate && globalIndex === blocks.length - 1) {
         // Last block — if empty just stay, otherwise create a new one
         e.preventDefault();
         if (block.content.trim() !== '') {
@@ -204,6 +246,7 @@ export const Block: React.FC<BlockProps> = ({
   };
 
   const isTable = block.type === 'table';
+  const isDivider = block.type === 'divider';
 
   return (
     <div
@@ -236,27 +279,52 @@ export const Block: React.FC<BlockProps> = ({
       <div className={`flex-1 min-w-0 notion-block-content py-0.5 px-1 rounded-sm transition-colors ${
         isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'
       }`}>
-        {isTable ? (
+        {isDivider ? (
+          <div className="py-2">
+            <hr className="border-t border-gray-300" />
+          </div>
+        ) : isTable ? (
           <TableBlock
             block={block}
             updateBlock={updateBlock}
             onNavigateOut={(direction) => {
               const blockContainer = internalRef.current;
               if (direction === 'down') {
-                const next = blockContainer?.nextSibling as HTMLElement;
-                if (next) {
-                  const editable = next.querySelector('[contenteditable]') as HTMLElement;
-                  if (editable) editable.focus();
-                } else if (globalIndex === blocks.length - 1) {
+                let candidate = blockContainer?.nextSibling as HTMLElement | null;
+                if (!candidate) {
+                  const page = blockContainer?.parentElement;
+                  const nextPage = page?.nextElementSibling as HTMLElement | null;
+                  if (nextPage) candidate = nextPage.firstElementChild as HTMLElement | null;
+                }
+                while (candidate) {
+                  const editable = candidate.querySelector('[contenteditable]') as HTMLElement | null;
+                  if (editable) { editable.focus(); break; }
+                  const next = candidate.nextSibling as HTMLElement | null;
+                  if (next) { candidate = next; } else {
+                    const page = candidate.parentElement;
+                    const nextPage = page?.nextElementSibling as HTMLElement | null;
+                    candidate = nextPage ? nextPage.firstElementChild as HTMLElement | null : null;
+                  }
+                }
+                if (!candidate && globalIndex === blocks.length - 1) {
                   addBlock(block.id);
                 }
               } else {
-                const prev = blockContainer?.previousSibling as HTMLElement;
-                if (prev) {
-                  // When going UP, focus the last contenteditable (e.g. last cell of a table above)
-                  const editables = prev.querySelectorAll('[contenteditable]');
-                  const editable = editables[editables.length - 1] as HTMLElement;
-                  if (editable) editable.focus();
+                let candidate = blockContainer?.previousSibling as HTMLElement | null;
+                if (!candidate) {
+                  const page = blockContainer?.parentElement;
+                  const prevPage = page?.previousElementSibling as HTMLElement | null;
+                  if (prevPage) candidate = prevPage.lastElementChild as HTMLElement | null;
+                }
+                while (candidate) {
+                  const editables = candidate.querySelectorAll('[contenteditable]');
+                  if (editables.length > 0) { (editables[editables.length - 1] as HTMLElement).focus(); break; }
+                  const prev = candidate.previousSibling as HTMLElement | null;
+                  if (prev) { candidate = prev; } else {
+                    const page = candidate.parentElement;
+                    const prevPage = page?.previousElementSibling as HTMLElement | null;
+                    candidate = prevPage ? prevPage.lastElementChild as HTMLElement | null : null;
+                  }
                 }
               }
             }}

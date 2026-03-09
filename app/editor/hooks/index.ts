@@ -6,3 +6,4 @@ export { useDragAndDrop } from './useDragAndDrop';
 export { useClipboard } from './useClipboard';
 export { useKeyboardShortcuts } from './useKeyboardShortcuts';
 export { usePagination } from './usePagination';
+export { useTableBlock } from './useTableBlock';

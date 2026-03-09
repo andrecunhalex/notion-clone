@@ -1,9 +1,11 @@
 // --- Tipos do Editor ---
 
-export type BlockType = 'text' | 'h1' | 'h2' | 'bullet_list' | 'numbered_list' | 'table';
+export type BlockType = 'text' | 'h1' | 'h2' | 'h3' | 'divider' | 'bullet_list' | 'numbered_list' | 'table';
 
 export interface TableCellData {
   content: string;
+  bgColor?: string;
+  textColor?: string;
 }
 
 export interface TableData {

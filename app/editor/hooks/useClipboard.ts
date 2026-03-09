@@ -17,7 +17,7 @@ interface UseClipboardProps {
 // ---------------------------------------------------------------------------
 
 const SKIP_TAGS = new Set(['style', 'script', 'meta', 'link', 'head', 'colgroup']);
-const BLOCK_TAGS = new Set(['h1', 'h2', 'h3', 'p', 'li', 'blockquote', 'pre', 'div', 'ul', 'ol', 'table']);
+const BLOCK_TAGS = new Set(['h1', 'h2', 'h3', 'p', 'li', 'blockquote', 'pre', 'div', 'ul', 'ol', 'table', 'hr']);
 
 /** Extract text from a node, converting <br> to \n */
 function getInnerText(node: Node): string {
@@ -94,8 +94,14 @@ function parseHtmlToBlocks(html: string): BlockData[] | null {
 
     if (tag === 'h1') {
       blocks.push({ id: generateId(), type: 'h1', content: getInnerText(el) });
-    } else if (tag === 'h2' || tag === 'h3') {
+    } else if (tag === 'h2') {
       blocks.push({ id: generateId(), type: 'h2', content: getInnerText(el) });
+    } else if (tag === 'h3') {
+      blocks.push({ id: generateId(), type: 'h3', content: getInnerText(el) });
+    } else if (tag === 'hr') {
+      blocks.push({ id: generateId(), type: 'divider', content: '' });
+    } else if (tag === 'blockquote') {
+      blocks.push({ id: generateId(), type: 'text', content: getInnerText(el) });
     } else if (tag === 'p') {
       blocks.push({ id: generateId(), type: 'text', content: getInnerText(el) });
     } else if (tag === 'ul') {
@@ -170,6 +176,10 @@ function blocksToHtml(blockList: BlockData[]): string {
       parts.push(`<h1>${content}</h1>`);
     } else if (b.type === 'h2') {
       parts.push(`<h2>${content}</h2>`);
+    } else if (b.type === 'h3') {
+      parts.push(`<h3>${content}</h3>`);
+    } else if (b.type === 'divider') {
+      parts.push('<hr>');
     } else if (b.type === 'bullet_list') {
       parts.push('<ul>');
       while (i < blockList.length && blockList[i].type === 'bullet_list') {
@@ -256,12 +266,15 @@ function parsePlainTextToBlocks(text: string): BlockData[] | null {
     let type: BlockData['type'] = 'text';
     let finalContent = content;
 
-    if (trimmed.startsWith('# ')) {
-      type = 'h1';
-      finalContent = trimmed.slice(2);
+    if (trimmed.startsWith('### ')) {
+      type = 'h3';
+      finalContent = trimmed.slice(4);
     } else if (trimmed.startsWith('## ')) {
       type = 'h2';
       finalContent = trimmed.slice(3);
+    } else if (trimmed.startsWith('# ')) {
+      type = 'h1';
+      finalContent = trimmed.slice(2);
     }
 
     blocks.push({ id: generateId(), type, content: finalContent });
@@ -270,6 +283,13 @@ function parsePlainTextToBlocks(text: string): BlockData[] | null {
 
   for (const line of lines) {
     const trimmed = line.trim();
+
+    // Detect horizontal rule
+    if (/^-{3,}$/.test(trimmed) || /^\*{3,}$/.test(trimmed) || /^_{3,}$/.test(trimmed)) {
+      flushCurrent();
+      blocks.push({ id: generateId(), type: 'divider', content: '' });
+      continue;
+    }
 
     // Detect list items
     if (/^[-*]\s+/.test(trimmed)) {
@@ -362,7 +382,11 @@ export const useClipboard = ({ blocks, setBlocks, selectedIds, setSelectedIds }:
       const htmlBlocks = html ? parseHtmlToBlocks(html) : null;
       const textBlocks = text ? parsePlainTextToBlocks(text) : null;
 
-      if (htmlBlocks && textBlocks && textBlocks.length > htmlBlocks.length) {
+      // If HTML contains structured blocks (tables, headings, lists), prefer HTML
+      const htmlHasStructure = htmlBlocks?.some(b => b.type === 'table' || b.type === 'divider');
+      if (htmlBlocks && htmlHasStructure) {
+        processedBlocks = htmlBlocks;
+      } else if (htmlBlocks && textBlocks && textBlocks.length > htmlBlocks.length) {
         // Plain text has more blocks (empty blocks preserved) — use it but inherit types from HTML
         const htmlTypeMap = new Map<string, BlockData['type']>();
         for (const hb of htmlBlocks) {
