@@ -412,14 +412,14 @@ export const useClipboard = ({ blocks, setBlocks, selectedIds, setSelectedIds }:
 
     // --- Determine insert position ---
     let insertIndex = blocks.length;
-    let removeSelected = false;
     let replaceEmpty = false;
 
     if (selectedIds.size > 0) {
-      // Replace selected blocks with pasted content
-      removeSelected = true;
-      insertIndex = blocks.findIndex(b => selectedIds.has(b.id));
-      if (insertIndex === -1) insertIndex = blocks.length;
+      // Insert after the last selected block (don't replace)
+      const lastSelectedIndex = blocks.reduce((max, b, i) =>
+        selectedIds.has(b.id) ? i : max, -1
+      );
+      insertIndex = lastSelectedIndex === -1 ? blocks.length : lastSelectedIndex + 1;
     } else if (document.activeElement?.id.startsWith('editable-')) {
       const activeId = document.activeElement.id.replace('editable-', '');
       const activeIndex = blocks.findIndex(b => b.id === activeId);
@@ -437,10 +437,7 @@ export const useClipboard = ({ blocks, setBlocks, selectedIds, setSelectedIds }:
     // --- Build final blocks ---
     let finalBlocks: BlockData[];
 
-    if (removeSelected) {
-      finalBlocks = blocks.filter(b => !selectedIds.has(b.id));
-      finalBlocks.splice(insertIndex, 0, ...processedBlocks);
-    } else if (replaceEmpty) {
+    if (replaceEmpty) {
       finalBlocks = [...blocks];
       finalBlocks.splice(insertIndex, 1, ...processedBlocks);
     } else {
