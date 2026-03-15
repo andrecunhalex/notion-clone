@@ -69,7 +69,7 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
     clearCellContents, updateCellColors,
     selectedCells,
     handleCellMouseDown, handleCellMouseEnter,
-    handleCellKeyDown, handleCellBlur,
+    handleCellKeyDown, handleCellInput, handleCellBlur,
     contextMenu, setContextMenu, colorSubmenu, setColorSubmenu, handleContextMenu,
     handleResizeStart,
     isHovered, handleMouseEnter, handleMouseLeave,
@@ -190,6 +190,7 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
                       suppressContentEditableWarning
                       className="outline-none px-2 py-1.5 text-sm min-h-[28px] break-words"
                       style={{ color: cell.textColor || '#374151' }}
+                      onInput={e => handleCellInput(rowIdx, colIdx, e.currentTarget as HTMLDivElement)}
                       onBlur={e => handleCellBlur(rowIdx, colIdx, e.currentTarget)}
                       onKeyDown={e => handleCellKeyDown(e, rowIdx, colIdx)}
                     />

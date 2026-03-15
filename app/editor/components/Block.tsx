@@ -3,7 +3,7 @@
 import React, { useRef, useEffect, Dispatch, SetStateAction } from 'react';
 import { GripVertical } from 'lucide-react';
 import { BlockData, BlockType, SlashMenuState, DropTarget } from '../types';
-import { isListType, getBulletChar, getListNumber } from '../utils';
+import { isListType, getBulletChar, getListNumber, isContentEmpty } from '../utils';
 import { TableBlock } from './TableBlock';
 
 interface BlockProps {
@@ -86,9 +86,9 @@ export const Block: React.FC<BlockProps> = ({
   useEffect(() => {
     if (block.type === 'table' || block.type === 'divider') return;
     const el = document.getElementById(`editable-${block.id}`);
-    if (el && el.innerText !== block.content) {
+    if (el && el.innerHTML !== block.content) {
       const isFocused = document.activeElement === el;
-      el.innerText = block.content;
+      el.innerHTML = block.content;
       if (isFocused && block.content) {
         const range = document.createRange();
         const sel = window.getSelection();
@@ -133,7 +133,7 @@ export const Block: React.FC<BlockProps> = ({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (isList) {
-        if (block.content.trim() === '') {
+        if (isContentEmpty(block.content)) {
           // Empty list item → convert to text
           updateBlock(block.id, { type: 'text', indent: undefined });
         } else {
@@ -144,7 +144,7 @@ export const Block: React.FC<BlockProps> = ({
       }
     }
 
-    if (e.key === 'Backspace' && (!block.content || block.content.trim() === '')) {
+    if (e.key === 'Backspace' && isContentEmpty(block.content)) {
       e.preventDefault();
       if (isList) {
         updateBlock(block.id, { type: 'text', indent: undefined });
@@ -155,11 +155,21 @@ export const Block: React.FC<BlockProps> = ({
 
     if (e.key === 'ArrowUp') {
       const currentEl = document.getElementById(`editable-${block.id}`);
-      const blockContainer = currentEl?.closest('.group');
-      // Walk backwards through siblings, crossing page boundaries, skipping dividers
+      if (!currentEl) return;
+
+      // Only navigate to previous block if cursor is on the first line
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const cursorRect = sel.getRangeAt(0).getBoundingClientRect();
+        const elRect = currentEl.getBoundingClientRect();
+        // If cursor top is not near the element top, let the browser handle it (move within block)
+        if (cursorRect.top - elRect.top > 4) return;
+      }
+
+      e.preventDefault();
+      const blockContainer = currentEl.closest('.group');
       let candidate = blockContainer?.previousSibling as HTMLElement | null;
       if (!candidate) {
-        // Cross page boundary: go to previous page's last block
         const page = blockContainer?.parentElement;
         const prevPage = page?.previousElementSibling as HTMLElement | null;
         if (prevPage) candidate = prevPage.lastElementChild as HTMLElement | null;
@@ -167,11 +177,17 @@ export const Block: React.FC<BlockProps> = ({
       while (candidate) {
         const editables = candidate.querySelectorAll('[contenteditable]');
         if (editables.length > 0) {
-          // Focus last editable (bottom-right for tables)
-          (editables[editables.length - 1] as HTMLElement).focus();
+          const target = editables[editables.length - 1] as HTMLElement;
+          target.focus();
+          // Place cursor at the end of the last line
+          const range = document.createRange();
+          const s = window.getSelection();
+          range.selectNodeContents(target);
+          range.collapse(false);
+          s?.removeAllRanges();
+          s?.addRange(range);
           break;
         }
-        // Skip this block (divider), try next one up
         const prev = candidate.previousSibling as HTMLElement | null;
         if (prev) {
           candidate = prev;
@@ -185,11 +201,21 @@ export const Block: React.FC<BlockProps> = ({
 
     if (e.key === 'ArrowDown') {
       const currentEl = document.getElementById(`editable-${block.id}`);
-      const blockContainer = currentEl?.closest('.group');
-      // Walk forwards through siblings, crossing page boundaries, skipping dividers
+      if (!currentEl) return;
+
+      // Only navigate to next block if cursor is on the last line
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const cursorRect = sel.getRangeAt(0).getBoundingClientRect();
+        const elRect = currentEl.getBoundingClientRect();
+        // If cursor bottom is not near the element bottom, let the browser handle it
+        if (elRect.bottom - cursorRect.bottom > 4) return;
+      }
+
+      e.preventDefault();
+      const blockContainer = currentEl.closest('.group');
       let candidate = blockContainer?.nextSibling as HTMLElement | null;
       if (!candidate) {
-        // Cross page boundary: go to next page's first block
         const page = blockContainer?.parentElement;
         const nextPage = page?.nextElementSibling as HTMLElement | null;
         if (nextPage) candidate = nextPage.firstElementChild as HTMLElement | null;
@@ -198,9 +224,15 @@ export const Block: React.FC<BlockProps> = ({
         const editable = candidate.querySelector('[contenteditable]') as HTMLElement | null;
         if (editable) {
           editable.focus();
+          // Place cursor at the start of the first line
+          const range = document.createRange();
+          const s = window.getSelection();
+          range.selectNodeContents(editable);
+          range.collapse(true);
+          s?.removeAllRanges();
+          s?.addRange(range);
           break;
         }
-        // Skip this block (divider), try next one down
         const next = candidate.nextSibling as HTMLElement | null;
         if (next) {
           candidate = next;
@@ -211,9 +243,7 @@ export const Block: React.FC<BlockProps> = ({
         }
       }
       if (!candidate && globalIndex === blocks.length - 1) {
-        // Last block — if empty just stay, otherwise create a new one
-        e.preventDefault();
-        if (block.content.trim() !== '') {
+        if (!isContentEmpty(block.content)) {
           addBlock(block.id);
         }
       }
@@ -340,7 +370,7 @@ export const Block: React.FC<BlockProps> = ({
               className={`outline-none empty:before:text-gray-300 cursor-text flex-1 min-w-0 ${BLOCK_STYLES[block.type]} focus:empty:before:content-[attr(data-placeholder)]`}
               data-placeholder={isList ? 'Lista...' : "Digite '/' para comandos..."}
               onKeyDown={handleKeyDown}
-              onInput={e => updateBlock(block.id, { content: e.currentTarget.innerText })}
+              onInput={e => updateBlock(block.id, { content: e.currentTarget.innerHTML })}
               onFocus={onClearSelection}
             />
           </div>

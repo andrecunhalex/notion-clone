@@ -258,9 +258,9 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
     return () => document.removeEventListener('keydown', onKey);
   }, [block.id]);
 
-  // --- Cell blur ---
+  // --- Cell content save (on input and blur) ---
 
-  const handleCellBlur = useCallback((rowIdx: number, colIdx: number, el: HTMLDivElement) => {
+  const handleCellInput = useCallback((rowIdx: number, colIdx: number, el: HTMLDivElement) => {
     const content = el.innerHTML;
     const newRows = rows.map((row, ri) =>
       row.map((cell, ci) =>
@@ -270,6 +270,10 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
     lastSyncedData.current = JSON.stringify(newRows);
     updateTableData({ rows: newRows });
   }, [rows, updateTableData]);
+
+  const handleCellBlur = useCallback((rowIdx: number, colIdx: number, el: HTMLDivElement) => {
+    handleCellInput(rowIdx, colIdx, el);
+  }, [handleCellInput]);
 
   // --- Keyboard navigation (in edit mode) ---
 
@@ -451,7 +455,7 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
     duplicateRow, toggleHeaderRow, clearCellContents, updateCellColors,
     selectedCells, setSelectedCells,
     handleCellMouseDown, handleCellMouseEnter,
-    handleCellKeyDown, handleCellBlur,
+    handleCellKeyDown, handleCellInput, handleCellBlur,
     contextMenu, setContextMenu, colorSubmenu, setColorSubmenu, handleContextMenu,
     resizingCol, handleResizeStart,
     isHovered, handleMouseEnter, handleMouseLeave,

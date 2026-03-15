@@ -36,6 +36,11 @@ export const useKeyboardShortcuts = ({
       // Undo/Redo
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault();
+        // Flush current cell/block content before undo so state is up-to-date
+        const active = document.activeElement as HTMLElement;
+        if (active?.isContentEditable) {
+          active.blur();
+        }
         e.shiftKey ? redo() : undo();
         return;
       }

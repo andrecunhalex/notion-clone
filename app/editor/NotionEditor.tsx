@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import { BlockData, SlashMenuState, ViewMode, NotionEditorProps } from './types';
-import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId } from './utils';
+import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty } from './utils';
 import {
   useHistory,
   useBlockManager,
@@ -12,7 +12,7 @@ import {
   useKeyboardShortcuts,
   usePagination
 } from './hooks';
-import { Block, SlashMenu, Toolbar, SelectionOverlay } from './components';
+import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar } from './components';
 
 const DEFAULT_BLOCK: BlockData = { id: 'initial-block', type: 'text', content: '' };
 
@@ -91,7 +91,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     e.stopPropagation();
     clearSelection();
     const lastBlock = blocks[blocks.length - 1];
-    if (lastBlock && lastBlock.type === 'text' && lastBlock.content === '') {
+    if (lastBlock && lastBlock.type === 'text' && isContentEmpty(lastBlock.content)) {
       focusBlock(lastBlock.id);
     } else {
       addBlock(lastBlock?.id);
@@ -111,11 +111,21 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     const lastBlockEl = blocksOnPage[blocksOnPage.length - 1];
     const lastRect = lastBlockEl.getBoundingClientRect();
     if (e.clientY > lastRect.bottom) {
-      const lastBlock = blocks[blocks.length - 1];
-      if (lastBlock && lastBlock.type === 'text' && lastBlock.content === '') {
-        focusBlock(lastBlock.id);
+      // Focus last block of THIS page (not the whole document)
+      const lastPageBlock = pageBlocks[pageBlocks.length - 1];
+      const isLastPage = lastPageBlock.id === blocks[blocks.length - 1].id;
+
+      if (isLastPage) {
+        // Last page: create a new block or focus existing empty one
+        const lastBlock = blocks[blocks.length - 1];
+        if (lastBlock && lastBlock.type === 'text' && isContentEmpty(lastBlock.content)) {
+          focusBlock(lastBlock.id);
+        } else {
+          addBlock(lastBlock?.id);
+        }
       } else {
-        addBlock(lastBlock?.id);
+        // Not the last page: just focus the last block on this page
+        focusBlock(lastPageBlock.id);
       }
       return;
     }
@@ -143,32 +153,33 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
 
   const handleSlashMenuSelect = useCallback((type: BlockData['type']) => {
     if (!slashMenu.blockId) return;
-    const currentBlock = blocks.find(b => b.id === slashMenu.blockId);
-    if (!currentBlock) return;
 
-    let cleanContent = currentBlock.content;
-    const selection = window.getSelection();
-    if (selection && selection.rangeCount > 0 && selection.focusNode) {
-      const blockEl = document.getElementById(`editable-${slashMenu.blockId}`);
-      if (blockEl && blockEl.contains(selection.focusNode)) {
-        const currentPos = selection.anchorOffset;
-        const textBefore = cleanContent.slice(0, currentPos);
-        const slashIndex = textBefore.lastIndexOf('/');
-        if (slashIndex !== -1) {
-          cleanContent = cleanContent.slice(0, slashIndex) + cleanContent.slice(currentPos);
+    const blockEl = document.getElementById(`editable-${slashMenu.blockId}`);
+    let cleanContent = '';
+
+    if (blockEl) {
+      // Remove the '/' and any filter text from the DOM directly
+      const walker = document.createTreeWalker(blockEl, NodeFilter.SHOW_TEXT);
+      let lastSlashNode: Text | null = null;
+      let lastSlashIdx = -1;
+      while (walker.nextNode()) {
+        const node = walker.currentNode as Text;
+        const text = node.textContent || '';
+        const idx = text.lastIndexOf('/');
+        if (idx !== -1) {
+          lastSlashNode = node;
+          lastSlashIdx = idx;
         }
       }
-    }
-    if (cleanContent === currentBlock.content) {
-      if (cleanContent.trim().endsWith('/')) {
-        cleanContent = cleanContent.slice(0, cleanContent.lastIndexOf('/'));
+      if (lastSlashNode && lastSlashIdx !== -1) {
+        lastSlashNode.deleteData(lastSlashIdx, (lastSlashNode.textContent || '').length - lastSlashIdx);
       }
+      cleanContent = blockEl.innerHTML;
+      if (isContentEmpty(cleanContent)) cleanContent = '';
     }
 
     if (type === 'divider') {
-      const el = document.getElementById(`editable-${slashMenu.blockId}`);
-      if (el) el.innerText = '';
-      // Do both update + add in a single setBlocks to avoid stale closure
+      if (blockEl) blockEl.innerHTML = '';
       const idx = blocks.findIndex(b => b.id === slashMenu.blockId);
       const newTextBlock: BlockData = { id: generateId(), type: 'text', content: '' };
       const newBlocks = blocks.map(b => b.id === slashMenu.blockId ? { ...b, type: 'divider' as const, content: '' } : b);
@@ -177,15 +188,13 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       setSlashMenu(prev => ({ ...prev, isOpen: false }));
       focusBlock(newTextBlock.id);
     } else if (type === 'table') {
-      const el = document.getElementById(`editable-${slashMenu.blockId}`);
-      if (el) el.innerText = '';
+      if (blockEl) blockEl.innerHTML = '';
       updateBlock(slashMenu.blockId, {
         type,
         content: '',
         tableData: createDefaultTableData(),
       });
       setSlashMenu(prev => ({ ...prev, isOpen: false }));
-      // Focus first cell after render
       setTimeout(() => {
         const firstCell = document.querySelector(
           `[data-table-cell="${slashMenu.blockId}-0-0"]`
@@ -193,8 +202,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         firstCell?.focus();
       }, 50);
     } else {
-      const el = document.getElementById(`editable-${slashMenu.blockId}`);
-      if (el) el.innerText = cleanContent;
+      if (blockEl) blockEl.innerHTML = cleanContent;
       updateBlock(slashMenu.blockId, { type, content: cleanContent });
       setSlashMenu(prev => ({ ...prev, isOpen: false }));
       focusBlock(slashMenu.blockId);
@@ -279,6 +287,8 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           onSelect={handleSlashMenuSelect}
         />
       )}
+
+      {!slashMenu.isOpen && <FloatingToolbar />}
     </div>
   );
 };

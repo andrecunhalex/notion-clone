@@ -111,6 +111,21 @@ export const focusBlock = (blockId: string, collapseToEnd = true) => {
   }, 0);
 };
 
+// Check if HTML content is effectively empty (no visible text)
+export const isContentEmpty = (content: string): boolean => {
+  if (!content) return true;
+  const text = content.replace(/<[^>]*>/g, '').trim();
+  return text === '';
+};
+
+// Extract plain text from HTML content
+export const htmlToPlainText = (html: string): string => {
+  if (!html) return '';
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent || '';
+};
+
 // Copia texto para clipboard (compatível com iframes)
 export const copyToClipboard = (text: string) => {
   const textArea = document.createElement('textarea');
