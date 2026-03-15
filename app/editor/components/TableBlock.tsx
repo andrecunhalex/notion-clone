@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useRef, useLayoutEffect, useState } from 'react';
 import {
   Plus, Trash2, Palette, ChevronRight, ArrowUp, ArrowDown,
   Copy, XCircle, TableProperties
@@ -79,6 +79,61 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
   const { block } = props;
   const hasMultiSelection = selectedCells.size > 1;
   const selBounds = hasMultiSelection ? getSelectionBounds(selectedCells) : null;
+
+  // Dynamic context menu positioning
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) {
+      setMenuPos(null);
+      return;
+    }
+    const rect = contextMenuRef.current.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    let top = contextMenu.y;
+    let left = contextMenu.x;
+
+    if (top + rect.height > vh) {
+      top = Math.max(4, contextMenu.y - rect.height);
+    }
+    if (left + rect.width > vw) {
+      left = Math.max(4, vw - rect.width - 4);
+    }
+    setMenuPos({ left, top });
+  }, [contextMenu]);
+
+  // Dynamic color submenu positioning
+  const colorMenuRef = useRef<HTMLDivElement>(null);
+  const colorTriggerRef = useRef<HTMLDivElement>(null);
+  const [colorMenuPos, setColorMenuPos] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!colorSubmenu || !colorMenuRef.current || !contextMenuRef.current) {
+      setColorMenuPos(null);
+      return;
+    }
+    const mainRect = contextMenuRef.current.getBoundingClientRect();
+    const colorRect = colorMenuRef.current.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    // Position to the right of the main menu
+    let left = mainRect.right + 2;
+    if (left + colorRect.width > vw) {
+      left = Math.max(4, mainRect.left - colorRect.width - 2);
+    }
+
+    // Align top with the "Cor" trigger, but clamp to viewport
+    const triggerRect = colorTriggerRef.current?.getBoundingClientRect();
+    let top = triggerRect ? triggerRect.top : mainRect.top;
+    if (top + colorRect.height > vh) {
+      top = Math.max(4, vh - colorRect.height - 4);
+    }
+
+    setColorMenuPos({ left, top });
+  }, [colorSubmenu]);
 
   return (
     <div
@@ -180,8 +235,14 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
       {/* Context menu */}
       {contextMenu && (
         <div
+          ref={contextMenuRef}
+          data-table-context-menu
           className="fixed bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-52 z-50"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          style={{
+            left: menuPos ? menuPos.left : contextMenu.x,
+            top: menuPos ? menuPos.top : contextMenu.y,
+            visibility: menuPos ? 'visible' : 'hidden',
+          }}
           onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
           onClick={e => e.stopPropagation()}
         >
@@ -203,9 +264,14 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
 
           {/* Color submenu trigger */}
           <div
+            ref={colorTriggerRef}
             className="relative"
             onMouseEnter={() => setColorSubmenu(true)}
-            onMouseLeave={() => setColorSubmenu(false)}
+            onMouseLeave={(e) => {
+              const related = e.relatedTarget as Node | null;
+              if (colorMenuRef.current && related && colorMenuRef.current.contains(related)) return;
+              setColorSubmenu(false);
+            }}
           >
             <button className="flex items-center justify-between w-full px-3 py-1.5 text-sm text-left hover:bg-gray-100 transition-colors">
               <span className="flex items-center gap-2">
@@ -217,9 +283,21 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
 
             {colorSubmenu && (
               <div
-                className="absolute left-full top-0 ml-0.5 bg-white shadow-xl border border-gray-200 rounded-lg py-2 w-52 z-50 max-h-[70vh] overflow-y-auto"
+                ref={colorMenuRef}
+                data-table-context-menu
+                className="fixed bg-white shadow-xl border border-gray-200 rounded-lg py-2 w-52 z-50 max-h-[70vh] overflow-y-auto"
+                style={{
+                  left: colorMenuPos ? colorMenuPos.left : undefined,
+                  top: colorMenuPos ? colorMenuPos.top : undefined,
+                  visibility: colorMenuPos ? 'visible' : 'hidden',
+                }}
                 onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
                 onClick={e => e.stopPropagation()}
+                onMouseLeave={(e) => {
+                  const related = e.relatedTarget as Node | null;
+                  if (colorTriggerRef.current && related && colorTriggerRef.current.contains(related)) return;
+                  setColorSubmenu(false);
+                }}
               >
                 <div className="px-3 pb-1 text-xs font-medium text-gray-500">Cor do texto</div>
                 {TEXT_COLORS.map(c => (

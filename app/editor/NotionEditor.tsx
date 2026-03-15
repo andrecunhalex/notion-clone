@@ -103,7 +103,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     if (didDragSelect()) return;
 
     const blocksOnPage = pageBlocks
-      .map(b => document.getElementById(`editable-${b.id}`))
+      .map(b => document.querySelector(`[data-block-id="${b.id}"]`) as HTMLElement | null)
       .filter(Boolean) as HTMLElement[];
     if (blocksOnPage.length === 0) return;
 

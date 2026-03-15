@@ -251,6 +251,7 @@ export const Block: React.FC<BlockProps> = ({
   return (
     <div
       ref={internalRef}
+      data-block-id={block.id}
       className="group relative flex items-start -ml-12 pr-2 py-0.5 my-0.5"
       onDragOver={e => onDragOver(e, block.id)}
       onDrop={e => { e.stopPropagation(); onDrop(e); }}

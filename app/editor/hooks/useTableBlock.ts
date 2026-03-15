@@ -382,7 +382,24 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
     if (!contextMenu) return;
     const close = () => { setContextMenu(null); setColorSubmenu(false); };
     window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
+
+    // Block page scroll while context menu is open
+    const origOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    const preventScroll = (e: Event) => {
+      const menuEl = document.querySelector('[data-table-context-menu]');
+      if (menuEl && menuEl.contains(e.target as Node)) return;
+      e.preventDefault();
+    };
+    window.addEventListener('wheel', preventScroll, { passive: false });
+    window.addEventListener('touchmove', preventScroll, { passive: false });
+
+    return () => {
+      window.removeEventListener('click', close);
+      document.documentElement.style.overflow = origOverflow;
+      window.removeEventListener('wheel', preventScroll);
+      window.removeEventListener('touchmove', preventScroll);
+    };
   }, [contextMenu]);
 
   // --- Column resize ---
