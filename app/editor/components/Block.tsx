@@ -5,6 +5,7 @@ import { GripVertical } from 'lucide-react';
 import { BlockData, BlockType, SlashMenuState, DropTarget } from '../types';
 import { isListType, getBulletChar, getListNumber, isContentEmpty } from '../utils';
 import { TableBlock } from './TableBlock';
+import { ImageBlock } from './ImageBlock';
 
 interface BlockProps {
   block: BlockData;
@@ -35,6 +36,7 @@ const BLOCK_STYLES: Record<string, string> = {
   numbered_list: 'text-base my-0 text-gray-700 leading-relaxed',
   divider: '',
   table: '',
+  image: '',
 };
 
 // Handle wrapper height matches each block's first line height for vertical centering
@@ -47,6 +49,7 @@ const HANDLE_LINE: Record<string, string> = {
   numbered_list: 'h-[26px]',
   divider: 'h-4',
   table: 'h-6',
+  image: 'h-6',
 };
 
 export const Block: React.FC<BlockProps> = ({
@@ -84,7 +87,7 @@ export const Block: React.FC<BlockProps> = ({
   }, [block.id, onHeightChange, blockRef]);
 
   useEffect(() => {
-    if (block.type === 'table' || block.type === 'divider') return;
+    if (block.type === 'table' || block.type === 'divider' || block.type === 'image') return;
     const el = document.getElementById(`editable-${block.id}`);
     if (el && el.innerHTML !== block.content) {
       const isFocused = document.activeElement === el;
@@ -277,6 +280,7 @@ export const Block: React.FC<BlockProps> = ({
 
   const isTable = block.type === 'table';
   const isDivider = block.type === 'divider';
+  const isImage = block.type === 'image';
 
   return (
     <div
@@ -314,6 +318,12 @@ export const Block: React.FC<BlockProps> = ({
           <div className="py-2">
             <hr className="border-t border-gray-300" />
           </div>
+        ) : isImage ? (
+          <ImageBlock
+            block={block}
+            updateBlock={updateBlock}
+            removeBlock={removeBlock}
+          />
         ) : isTable ? (
           <TableBlock
             block={block}

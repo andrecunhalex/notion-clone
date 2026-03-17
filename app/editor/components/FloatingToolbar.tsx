@@ -53,7 +53,7 @@ const FORMAT_ACTIONS: FormatAction[] = [
   { id: 'italic', icon: <Italic size={16} />, label: 'Itálico', shortcut: `${modKey}+I`, command: 'italic' },
   { id: 'underline', icon: <Underline size={16} />, label: 'Sublinhado', shortcut: `${modKey}+U`, command: 'underline' },
   { id: 'strikethrough', icon: <Strikethrough size={16} />, label: 'Tachado', shortcut: `${modKey}+${shiftKey}+X`, command: 'strikeThrough' },
-  { id: 'code', icon: <Code size={16} />, label: 'Código', shortcut: `${modKey}+E`, command: 'code' },
+  // { id: 'code', icon: <Code size={16} />, label: 'Código', shortcut: `${modKey}+E`, command: 'code' },
 ];
 
 // --- Tooltip component ---

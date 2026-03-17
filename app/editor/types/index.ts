@@ -1,6 +1,6 @@
 // --- Tipos do Editor ---
 
-export type BlockType = 'text' | 'h1' | 'h2' | 'h3' | 'divider' | 'bullet_list' | 'numbered_list' | 'table';
+export type BlockType = 'text' | 'h1' | 'h2' | 'h3' | 'divider' | 'bullet_list' | 'numbered_list' | 'table' | 'image';
 
 export interface TableCellData {
   content: string;
@@ -14,12 +14,22 @@ export interface TableData {
   hasHeaderRow: boolean;
 }
 
+export type ImageAlignment = 'left' | 'center' | 'right';
+
+export interface ImageData {
+  src: string;
+  width: number; // percentage of container width (10-100)
+  alignment: ImageAlignment;
+  caption?: string;
+}
+
 export interface BlockData {
   id: string;
   type: BlockType;
   content: string;
   indent?: number;
   tableData?: TableData;
+  imageData?: ImageData;
 }
 
 export interface SlashMenuState {

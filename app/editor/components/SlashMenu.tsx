@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Type, Heading1, Heading2, Heading3, List, ListOrdered, Table, Minus, LucideIcon } from 'lucide-react';
+import { Type, Heading1, Heading2, Heading3, List, ListOrdered, Table, Minus, ImagePlus, LucideIcon } from 'lucide-react';
 import { BlockType } from '../types';
 
 interface SlashMenuProps {
@@ -27,6 +27,7 @@ const MENU_OPTIONS: MenuOption[] = [
   { type: 'numbered_list', label: 'Lista numerada', icon: ListOrdered, aliases: ['numbered', 'ol', 'numerada', 'ordered', '1.'] },
   { type: 'divider', label: 'Divisor', icon: Minus, aliases: ['divider', 'divisor', 'hr', 'linha', '---'] },
   { type: 'table', label: 'Tabela', icon: Table, aliases: ['table', 'tabela', 'grid'] },
+  { type: 'image', label: 'Imagem', icon: ImagePlus, aliases: ['image', 'imagem', 'foto', 'picture', 'img'] },
 ];
 
 const MENU_GAP_ABOVE = 22;

@@ -187,6 +187,18 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       setBlocks(newBlocks);
       setSlashMenu(prev => ({ ...prev, isOpen: false }));
       focusBlock(newTextBlock.id);
+    } else if (type === 'image') {
+      if (blockEl) blockEl.innerHTML = '';
+      const idx = blocks.findIndex(b => b.id === slashMenu.blockId);
+      const newTextBlock: BlockData = { id: generateId(), type: 'text', content: '' };
+      const newBlocks = blocks.map(b =>
+        b.id === slashMenu.blockId
+          ? { ...b, type: 'image' as const, content: '', imageData: { src: '', width: 100, alignment: 'center' as const } }
+          : b
+      );
+      newBlocks.splice(idx + 1, 0, newTextBlock);
+      setBlocks(newBlocks);
+      setSlashMenu(prev => ({ ...prev, isOpen: false }));
     } else if (type === 'table') {
       if (blockEl) blockEl.innerHTML = '';
       updateBlock(slashMenu.blockId, {

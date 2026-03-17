@@ -35,57 +35,87 @@ export const useDragAndDrop = ({
     e.dataTransfer.setData('text/plain', id);
     e.dataTransfer.effectAllowed = 'move';
 
-    // Ghost
+    // Ghost — clone actual rendered block DOM for a real preview
+    // Wrapper allows badge to overflow the inner container
+    const wrapper = document.createElement('div');
+    Object.assign(wrapper.style, {
+      position: 'absolute', top: '-1000px',
+      zIndex: '9999', pointerEvents: 'none',
+      padding: '10px', // room for the badge to overflow
+    });
+
     const ghost = document.createElement('div');
     Object.assign(ghost.style, {
-      position: 'absolute', top: '-1000px', backgroundColor: 'white',
-      padding: '12px', borderRadius: '6px', width: '280px',
+      backgroundColor: 'white',
+      padding: '8px', borderRadius: '6px', width: '320px',
       boxShadow: '0 10px 25px -5px rgba(0,0,0,.1)', border: '1px solid #e5e7eb',
-      zIndex: '9999', pointerEvents: 'none',
+      overflow: 'hidden', position: 'relative',
     });
+    wrapper.appendChild(ghost);
+
     const draggedBlocks = blocks.filter(b => ids.includes(b.id));
     draggedBlocks.slice(0, 3).forEach(b => {
-      const div = document.createElement('div');
-      // div.textContent = b.content || (b.type === 'text' ? 'Texto vazio' : 'Título vazio');
-      // export type BlockType = 'text' | 'h1' | 'h2' | 'bullet_list' | 'numbered_list' | 'table';
-      div.textContent = b.content || ({
-        text: 'Texto vazio',
-        h1: 'Título vazio',
-        h2: 'Subtítulo vazio',
-        h3: 'Subtítulo vazio',
-        bullet_list: 'Item com marcador',
-        numbered_list: 'Item numerado',
-        table: 'Tabela',
-        divider: '———',
-      } as Record<string, string>)[b.type] || '';
-
-      Object.assign(div.style, {
-        fontSize: '12px', color: '#374151', marginBottom: '4px',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        fontWeight: b.type.startsWith('h') ? 'bold' : 'normal',
-      });
-      ghost.appendChild(div);
+      const blockEl = blockRefs.current?.[b.id];
+      if (blockEl) {
+        // Clone the .notion-block-content area (the actual rendered content, not the drag handle)
+        const contentEl = blockEl.querySelector('.notion-block-content') as HTMLElement | null;
+        const source = contentEl || blockEl;
+        const clone = source.cloneNode(true) as HTMLElement;
+        // Scale down to fit the ghost width
+        Object.assign(clone.style, {
+          transform: 'scale(0.85)', transformOrigin: 'top left',
+          maxHeight: '120px', overflow: 'hidden', pointerEvents: 'none',
+          marginBottom: '4px',
+        });
+        // Remove selection highlight (bg-blue-100) — reset to white/transparent
+        clone.classList.remove('bg-blue-100');
+        clone.classList.add('bg-white');
+        // Also strip from any nested elements that may have selection bg
+        clone.querySelectorAll('.bg-blue-100').forEach(el => {
+          el.classList.remove('bg-blue-100');
+        });
+        // Remove interactive states
+        clone.querySelectorAll('[contenteditable]').forEach(el => {
+          (el as HTMLElement).removeAttribute('contenteditable');
+        });
+        ghost.appendChild(clone);
+      } else {
+        // Fallback: text label
+        const div = document.createElement('div');
+        div.textContent = b.content || ({
+          text: 'Texto vazio', h1: 'Título vazio', h2: 'Subtítulo vazio',
+          h3: 'Subtítulo vazio', bullet_list: 'Item com marcador',
+          numbered_list: 'Item numerado', table: 'Tabela',
+          divider: '———', image: 'Imagem',
+        } as Record<string, string>)[b.type] || '';
+        Object.assign(div.style, {
+          fontSize: '12px', color: '#374151', marginBottom: '4px',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          fontWeight: b.type.startsWith('h') ? 'bold' : 'normal',
+        });
+        ghost.appendChild(div);
+      }
     });
     if (draggedBlocks.length > 3) {
       const more = document.createElement('div');
       more.textContent = `+ mais ${draggedBlocks.length - 3} blocos...`;
-      Object.assign(more.style, { fontSize: '10px', color: '#9ca3af' });
+      Object.assign(more.style, { fontSize: '10px', color: '#9ca3af', marginTop: '4px' });
       ghost.appendChild(more);
     }
     if (draggedBlocks.length > 1) {
       const badge = document.createElement('div');
       badge.textContent = draggedBlocks.length.toString();
       Object.assign(badge.style, {
-        position: 'absolute', top: '-8px', right: '-8px',
+        position: 'absolute', top: '2px', right: '2px',
         backgroundColor: '#ef4444', color: 'white', borderRadius: '9999px',
         width: '20px', height: '20px', fontSize: '11px',
         display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold',
       });
       ghost.appendChild(badge);
     }
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 0, 0);
-    setTimeout(() => document.body.removeChild(ghost), 0);
+    document.body.appendChild(wrapper);
+    e.dataTransfer.setDragImage(wrapper, 10, 10);
+    setTimeout(() => document.body.removeChild(wrapper), 0);
   }, [blocks, selectedIds, setSelectedIds]);
 
   // Block-level: seta target para blocos NÃO arrastados
