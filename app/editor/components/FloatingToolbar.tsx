@@ -3,8 +3,10 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
   Bold, Italic, Underline, Strikethrough, Code, Link, ChevronRight,
-  Palette
+  Palette, Type, ChevronDown
 } from 'lucide-react';
+import { FontEntry, WEIGHT_LABELS } from '../fonts';
+import { useFonts } from './FontLoader';
 
 // --- Color constants (same as TableBlock) ---
 
@@ -73,7 +75,12 @@ const Tooltip: React.FC<{ label: string; shortcut: string; children: React.React
 };
 
 // --- Main component ---
-export const FloatingToolbar: React.FC = () => {
+interface FloatingToolbarProps {
+  documentFont?: string;
+}
+
+export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }) => {
+  const { allFonts, customFonts } = useFonts();
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState({ left: 0, top: 0 });
@@ -82,8 +89,35 @@ export const FloatingToolbar: React.FC = () => {
   const [colorMenuPos, setColorMenuPos] = useState<{ left: number; top: number } | null>(null);
   const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set());
 
+  // Font picker state
+  const [fontOpen, setFontOpen] = useState(false);
+  const fontMenuRef = useRef<HTMLDivElement>(null);
+  const [fontMenuPos, setFontMenuPos] = useState<{ left: number; top: number } | null>(null);
+  const [currentFont, setCurrentFont] = useState<string>('');
+  const [currentWeight, setCurrentWeight] = useState<number>(400);
+
+  // Weight picker state
+  const [weightOpen, setWeightOpen] = useState(false);
+  const weightMenuRef = useRef<HTMLDivElement>(null);
+  const [weightMenuPos, setWeightMenuPos] = useState<{ left: number; top: number } | null>(null);
+
   // Store the selection range so we can restore it after button clicks
   const savedRange = useRef<Range | null>(null);
+
+  // Walk up the DOM to find the closest styled <span> (with fontFamily or fontWeight)
+  const findStyledSpan = useCallback((node: Node | null): HTMLSpanElement | null => {
+    if (!node) return null;
+    let el: HTMLElement | null = node.nodeType === Node.ELEMENT_NODE
+      ? node as HTMLElement
+      : node.parentElement;
+    while (el && !el.hasAttribute('contenteditable')) {
+      if (el.tagName === 'SPAN' && (el.style.fontFamily || el.style.fontWeight)) {
+        return el as HTMLSpanElement;
+      }
+      el = el.parentElement;
+    }
+    return null;
+  }, []);
 
   const saveSelection = useCallback(() => {
     const sel = window.getSelection();
@@ -118,7 +152,25 @@ export const FloatingToolbar: React.FC = () => {
       }
     } catch { /* ignore */ }
     setActiveFormats(formats);
-  }, []);
+
+    // Detect current font and weight at selection
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const node = sel.anchorNode;
+      const el = node?.nodeType === Node.ELEMENT_NODE ? node as HTMLElement : (node as Node)?.parentElement;
+      if (el) {
+        const computed = window.getComputedStyle(el);
+        const family = computed.fontFamily;
+        const weight = parseInt(computed.fontWeight, 10) || 400;
+        // Try to match against known fonts
+        const matched = allFonts.find(f =>
+          family.toLowerCase().includes(f.family.split(',')[0].trim().replace(/['"]/g, '').toLowerCase())
+        );
+        setCurrentFont(matched?.family || '');
+        setCurrentWeight(weight);
+      }
+    }
+  }, [allFonts]);
 
   // Check if selection is inside an editable block or table cell
   const isInEditable = useCallback((): boolean => {
@@ -225,6 +277,7 @@ export const FloatingToolbar: React.FC = () => {
     const onMouseDown = (e: MouseEvent) => {
       if (toolbarRef.current?.contains(e.target as Node)) return;
       if (colorMenuRef.current?.contains(e.target as Node)) return;
+      if (fontMenuRef.current?.contains(e.target as Node)) return;
       // Don't close yet - let selectionchange handle it
     };
 
@@ -234,10 +287,12 @@ export const FloatingToolbar: React.FC = () => {
     };
   }, [visible, updatePosition]);
 
-  // Close color picker when toolbar hides
+  // Close submenus when toolbar hides
   useEffect(() => {
     if (!visible) {
       setColorOpen(false);
+      setFontOpen(false);
+      setWeightOpen(false);
     }
   }, [visible]);
 
@@ -266,6 +321,52 @@ export const FloatingToolbar: React.FC = () => {
 
     setColorMenuPos({ left, top });
   }, [colorOpen]);
+
+  // Position font submenu
+  useLayoutEffect(() => {
+    if (!fontOpen || !fontMenuRef.current || !toolbarRef.current) {
+      setFontMenuPos(null);
+      return;
+    }
+    const toolbarRect = toolbarRef.current.getBoundingClientRect();
+    const fontRect = fontMenuRef.current.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    let left = toolbarRect.left;
+    let top = toolbarRect.bottom + 4;
+
+    if (top + fontRect.height > vh - 4) {
+      top = toolbarRect.top - fontRect.height - 4;
+    }
+    if (left + fontRect.width > vw - 4) left = vw - fontRect.width - 4;
+    if (left < 4) left = 4;
+
+    setFontMenuPos({ left, top });
+  }, [fontOpen]);
+
+  // Position weight submenu
+  useLayoutEffect(() => {
+    if (!weightOpen || !weightMenuRef.current || !toolbarRef.current) {
+      setWeightMenuPos(null);
+      return;
+    }
+    const toolbarRect = toolbarRef.current.getBoundingClientRect();
+    const menuRect = weightMenuRef.current.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    let left = toolbarRect.left;
+    let top = toolbarRect.bottom + 4;
+
+    if (top + menuRect.height > vh - 4) {
+      top = toolbarRect.top - menuRect.height - 4;
+    }
+    if (left + menuRect.width > vw - 4) left = vw - menuRect.width - 4;
+    if (left < 4) left = 4;
+
+    setWeightMenuPos({ left, top });
+  }, [weightOpen]);
 
   // Apply formatting command
   const applyFormat = useCallback((command: string) => {
@@ -349,6 +450,122 @@ export const FloatingToolbar: React.FC = () => {
     setColorOpen(false);
   }, [restoreSelection, saveSelection]);
 
+  // Check if the selection range covers the entire contents of a span
+  const selectionCoversSpan = useCallback((range: Range, span: HTMLElement): boolean => {
+    const spanRange = document.createRange();
+    spanRange.selectNodeContents(span);
+    return (
+      range.compareBoundaryPoints(Range.START_TO_START, spanRange) <= 0 &&
+      range.compareBoundaryPoints(Range.END_TO_END, spanRange) >= 0
+    );
+  }, []);
+
+  // Wrap a range in a new span, copying relevant styles from a parent span if present
+  const wrapRangeInSpan = useCallback((range: Range, sel: Selection, styles: Partial<CSSStyleDeclaration>, parentSpan?: HTMLElement | null) => {
+    const span = document.createElement('span');
+    // Copy existing styles from parent span so the new span inherits font+weight
+    if (parentSpan) {
+      if (parentSpan.style.fontFamily) span.style.fontFamily = parentSpan.style.fontFamily;
+      if (parentSpan.style.fontWeight) span.style.fontWeight = parentSpan.style.fontWeight;
+    }
+    // Apply the new styles on top
+    if (styles.fontFamily !== undefined) span.style.fontFamily = styles.fontFamily;
+    if (styles.fontWeight !== undefined) span.style.fontWeight = styles.fontWeight;
+    try {
+      range.surroundContents(span);
+    } catch {
+      const fragment = range.extractContents();
+      span.appendChild(fragment);
+      range.insertNode(span);
+    }
+    sel.removeAllRanges();
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    sel.addRange(newRange);
+  }, []);
+
+  // Apply font family to selection
+  const applyFont = useCallback((font: FontEntry) => {
+    restoreSelection();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      setFontOpen(false);
+      return;
+    }
+
+    const range = sel.getRangeAt(0);
+    const styledSpan = findStyledSpan(sel.anchorNode);
+    const isDefault = !font.isCustom && font.family === allFonts[0].family;
+    const coversAll = styledSpan && styledSpan.contains(sel.focusNode) && selectionCoversSpan(range, styledSpan);
+
+    if (coversAll && styledSpan) {
+      // Selection covers the entire span — modify in place
+      if (isDefault) {
+        const text = document.createTextNode(styledSpan.textContent || '');
+        styledSpan.parentNode?.replaceChild(text, styledSpan);
+        sel.removeAllRanges();
+        const newRange = document.createRange();
+        newRange.selectNodeContents(text);
+        sel.addRange(newRange);
+      } else {
+        styledSpan.style.fontFamily = font.family;
+        sel.removeAllRanges();
+        const newRange = document.createRange();
+        newRange.selectNodeContents(styledSpan);
+        sel.addRange(newRange);
+      }
+    } else {
+      // Partial selection or no existing span — wrap in a new span
+      if (isDefault) {
+        setFontOpen(false);
+        return;
+      }
+      wrapRangeInSpan(range, sel, { fontFamily: font.family }, styledSpan);
+    }
+
+    const editable = (sel.anchorNode?.parentElement ?? sel.anchorNode as HTMLElement)?.closest?.('[contenteditable]');
+    if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
+    saveSelection();
+    setCurrentFont(font.family);
+    setFontOpen(false);
+  }, [restoreSelection, saveSelection, allFonts, findStyledSpan, selectionCoversSpan, wrapRangeInSpan]);
+
+  // Apply font-weight to selection
+  const applyWeight = useCallback((weight: number) => {
+    restoreSelection();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      setWeightOpen(false);
+      return;
+    }
+
+    const range = sel.getRangeAt(0);
+    const styledSpan = findStyledSpan(sel.anchorNode);
+    const coversAll = styledSpan && styledSpan.contains(sel.focusNode) && selectionCoversSpan(range, styledSpan);
+    const weightVal = weight === 400 ? '' : String(weight);
+
+    if (coversAll && styledSpan) {
+      // Selection covers the entire span — modify in place
+      styledSpan.style.fontWeight = weightVal;
+      sel.removeAllRanges();
+      const newRange = document.createRange();
+      newRange.selectNodeContents(styledSpan);
+      sel.addRange(newRange);
+    } else {
+      if (weight === 400) {
+        setWeightOpen(false);
+        return;
+      }
+      wrapRangeInSpan(range, sel, { fontWeight: String(weight) }, styledSpan);
+    }
+
+    const editable = (sel.anchorNode?.parentElement ?? sel.anchorNode as HTMLElement)?.closest?.('[contenteditable]');
+    if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
+    saveSelection();
+    setCurrentWeight(weight);
+    setWeightOpen(false);
+  }, [restoreSelection, saveSelection, findStyledSpan, selectionCoversSpan, wrapRangeInSpan]);
+
   // Keyboard shortcuts for formatting
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -420,6 +637,11 @@ export const FloatingToolbar: React.FC = () => {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [detectFormats]);
 
+  // Get available weights for the currently selected font
+  const currentFontEntry = allFonts.find(f => f.family === currentFont);
+  const availableWeights = currentFontEntry?.availableWeights;
+  const currentWeightLabel = WEIGHT_LABELS[currentWeight] || String(currentWeight);
+
   if (!visible) return null;
 
   return (
@@ -431,11 +653,44 @@ export const FloatingToolbar: React.FC = () => {
         style={{ left: position.left, top: position.top }}
         onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
       >
+        {/* Font button */}
+        <Tooltip label="Fonte" shortcut="">
+          <button
+            className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 max-w-[100px] ${fontOpen ? 'bg-gray-100' : ''}`}
+            onClick={() => { setFontOpen(!fontOpen); setColorOpen(false); setWeightOpen(false); }}
+          >
+            <Type size={14} />
+            <span className="truncate">
+              {currentFont
+                ? allFonts.find(f => f.family === currentFont)?.name || 'Fonte'
+                : 'Fonte'}
+            </span>
+            <ChevronDown size={10} />
+          </button>
+        </Tooltip>
+
+        {/* Weight button — only show when a custom font with multiple weights is active */}
+        {availableWeights && availableWeights.length > 1 && (
+          <Tooltip label="Peso" shortcut="">
+            <button
+              className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 ${weightOpen ? 'bg-gray-100' : ''}`}
+              onClick={() => { setWeightOpen(!weightOpen); setFontOpen(false); setColorOpen(false); }}
+            >
+              <span className="truncate" style={{ fontWeight: currentWeight }}>
+                {currentWeightLabel}
+              </span>
+              <ChevronDown size={10} />
+            </button>
+          </Tooltip>
+        )}
+
+        <div className="w-px h-5 bg-gray-200 mx-0.5" />
+
         {/* Color button */}
         <Tooltip label="Cor" shortcut="">
           <button
             className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${colorOpen ? 'bg-gray-100' : ''}`}
-            onClick={() => setColorOpen(!colorOpen)}
+            onClick={() => { setColorOpen(!colorOpen); setFontOpen(false); }}
           >
             <Palette size={16} className="text-gray-600" />
           </button>
@@ -503,6 +758,95 @@ export const FloatingToolbar: React.FC = () => {
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Font picker dropdown */}
+      {fontOpen && (
+        <div
+          ref={fontMenuRef}
+          className="fixed z-[51] bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-[200px] max-h-[280px] overflow-y-auto"
+          style={{
+            left: fontMenuPos?.left ?? 0,
+            top: fontMenuPos?.top ?? 0,
+            visibility: fontMenuPos ? 'visible' : 'hidden',
+          }}
+          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
+        >
+          {allFonts.length > 0 && (
+            <>
+              <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wider px-3 py-1">
+                Fontes do sistema
+              </div>
+              {allFonts.filter(f => !f.isCustom).map(font => (
+                <button
+                  key={font.family}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between ${
+                    currentFont === font.family ? 'bg-gray-50 text-blue-600' : 'text-gray-700'
+                  }`}
+                  onClick={() => applyFont(font)}
+                >
+                  <span style={{ fontFamily: font.family }}>{font.name}</span>
+                  {currentFont === font.family && (
+                    <span className="text-blue-500 text-xs">&#10003;</span>
+                  )}
+                </button>
+              ))}
+            </>
+          )}
+          {customFonts.length > 0 && (
+            <>
+              <div className="border-t border-gray-100 my-1" />
+              <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wider px-3 py-1">
+                Fontes customizadas
+              </div>
+              {customFonts.map(font => (
+                <button
+                  key={font.family}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between ${
+                    currentFont === font.family ? 'bg-gray-50 text-blue-600' : 'text-gray-700'
+                  }`}
+                  onClick={() => applyFont(font)}
+                >
+                  <span style={{ fontFamily: font.family }}>{font.name}</span>
+                  {currentFont === font.family && (
+                    <span className="text-blue-500 text-xs">&#10003;</span>
+                  )}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Weight picker dropdown */}
+      {weightOpen && availableWeights && availableWeights.length > 1 && (
+        <div
+          ref={weightMenuRef}
+          className="fixed z-[51] bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-[160px] max-h-[280px] overflow-y-auto"
+          style={{
+            left: weightMenuPos?.left ?? 0,
+            top: weightMenuPos?.top ?? 0,
+            visibility: weightMenuPos ? 'visible' : 'hidden',
+          }}
+          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
+        >
+          {availableWeights.map(w => (
+            <button
+              key={w}
+              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between ${
+                currentWeight === w ? 'bg-gray-50 text-blue-600' : 'text-gray-700'
+              }`}
+              onClick={() => applyWeight(w)}
+            >
+              <span style={{ fontFamily: currentFont, fontWeight: w }}>
+                {WEIGHT_LABELS[w] || w}
+              </span>
+              {currentWeight === w && (
+                <span className="text-blue-500 text-xs">&#10003;</span>
+              )}
+            </button>
+          ))}
         </div>
       )}
     </>

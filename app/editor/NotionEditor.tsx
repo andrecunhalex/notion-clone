@@ -13,6 +13,8 @@ import {
   usePagination
 } from './hooks';
 import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar } from './components';
+import { FontLoader } from './components/FontLoader';
+import { SYSTEM_FONTS } from './fonts';
 
 const DEFAULT_BLOCK: BlockData = { id: 'initial-block', type: 'text', content: '' };
 
@@ -24,6 +26,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
 }) => {
   const [blocks, setBlocksRaw, undoRaw, redoRaw, canUndo, canRedo] = useHistory<BlockData[]>(initialBlocks);
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
+  const [documentFont, setDocumentFont] = useState<string>(SYSTEM_FONTS[0].family);
   const [slashMenu, setSlashMenu] = useState<SlashMenuState>({
     isOpen: false, x: 0, y: 0, blockId: null
   });
@@ -224,6 +227,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   const pages = getPaginatedBlocks(blocks, blockHeights, viewMode);
 
   return (
+    <FontLoader>
     <div
       className={`min-h-screen text-gray-800 font-sans selection:bg-blue-200 ${
         selectionBox ? 'select-none' : ''
@@ -239,6 +243,8 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         onRedo={redo}
         viewMode={viewMode}
         onToggleViewMode={() => setViewMode(prev => (prev === 'continuous' ? 'paginated' : 'continuous'))}
+        documentFont={documentFont}
+        onDocumentFontChange={setDocumentFont}
       />
 
       <div
@@ -248,6 +254,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
             ? 'pt-8'
             : 'max-w-3xl mt-12 px-12 pb-64 min-h-[80vh]'
         }`}
+        style={{ fontFamily: documentFont || undefined }}
         onDragOver={handleContainerDragOver}
         onDrop={handleDrop}
       >
@@ -300,7 +307,8 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         />
       )}
 
-      {!slashMenu.isOpen && <FloatingToolbar />}
+      {!slashMenu.isOpen && <FloatingToolbar documentFont={documentFont} />}
     </div>
+    </FontLoader>
   );
 };
