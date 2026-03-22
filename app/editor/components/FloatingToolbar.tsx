@@ -4,7 +4,8 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from
 import {
   Bold, Italic, Underline, Strikethrough, Code, Link, ChevronRight,
   Palette, Type, ChevronDown,
-  AlignLeft, AlignCenter, AlignRight, AlignJustify
+  AlignLeft, AlignCenter, AlignRight, AlignJustify,
+  ExternalLink, BookmarkIcon, Unlink, Search
 } from 'lucide-react';
 import { FontEntry, WEIGHT_LABELS } from '../fonts';
 import { BlockData, TextAlign } from '../types';
@@ -123,6 +124,21 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
   const alignMenuRef = useRef<HTMLDivElement>(null);
   const [alignMenuPos, setAlignMenuPos] = useState<{ left: number; top: number } | null>(null);
 
+  // Link state
+  const [linkOpen, setLinkOpen] = useState(false);
+  const linkMenuRef = useRef<HTMLDivElement>(null);
+  const [linkMenuPos, setLinkMenuPos] = useState<{ left: number; top: number } | null>(null);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [currentLink, setCurrentLink] = useState<HTMLAnchorElement | null>(null);
+  const linkInputRef = useRef<HTMLInputElement>(null);
+
+  // Reference (internal link) state
+  const [refOpen, setRefOpen] = useState(false);
+  const refMenuRef = useRef<HTMLDivElement>(null);
+  const [refMenuPos, setRefMenuPos] = useState<{ left: number; top: number } | null>(null);
+  const [refSearch, setRefSearch] = useState('');
+  const refInputRef = useRef<HTMLInputElement>(null);
+
   // Find the block ID from the current selection
   const getSelectedBlockId = useCallback((): string | null => {
     const sel = window.getSelection();
@@ -182,6 +198,14 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
       if (sel && sel.rangeCount > 0) {
         const node = sel.anchorNode?.parentElement;
         if (node?.closest('code')) formats.add('code');
+        // Check for link
+        const anchor = node?.closest('a') as HTMLAnchorElement | null;
+        if (anchor) {
+          formats.add('link');
+          setCurrentLink(anchor);
+        } else {
+          setCurrentLink(null);
+        }
       }
     } catch { /* ignore */ }
     setActiveFormats(formats);
@@ -257,8 +281,15 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
     return !!(editable.id?.startsWith('editable-') || editable.hasAttribute('data-table-cell'));
   }, []);
 
+  // Ref to track whether a submenu with an input is open — avoids stale closure issues
+  const inputSubmenuOpenRef = useRef(false);
+  inputSubmenuOpenRef.current = linkOpen || refOpen;
+
   // Position the toolbar above the selection
   const updatePosition = useCallback(() => {
+    // Don't hide when an input submenu is open (selection is lost when input gets focus)
+    if (inputSubmenuOpenRef.current) return;
+
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
       setVisible(false);
@@ -281,6 +312,25 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
     detectFormats();
     saveSelection();
   }, [isInEditable, detectFormats, saveSelection]);
+
+  // Reposition toolbar from savedRange (for when input submenu is open and user scrolls)
+  const repositionFromSavedRange = useCallback(() => {
+    if (!toolbarRef.current || !savedRange.current) return;
+    const rect = savedRange.current.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return;
+    const toolbarRect = toolbarRef.current.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    let left = rect.left + rect.width / 2 - toolbarRect.width / 2;
+    let top = rect.top - toolbarRect.height - 8;
+    if (top < 4) top = rect.bottom + 8;
+    if (left < 4) left = 4;
+    if (left + toolbarRect.width > vw - 4) left = vw - toolbarRect.width - 4;
+    if (top + toolbarRect.height > vh - 4) top = vh - toolbarRect.height - 4;
+
+    setPosition({ left, top });
+  }, []);
 
   // Use layoutEffect to position after visible is set
   useLayoutEffect(() => {
@@ -336,26 +386,44 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
     };
   }, [updatePosition]);
 
-  // Close toolbar on scroll or click outside
+  // Reposition on scroll + close menus on click outside
   useEffect(() => {
     if (!visible) return;
 
     const onScroll = () => {
-      // Reposition on scroll instead of hiding
-      updatePosition();
+      if (inputSubmenuOpenRef.current) {
+        repositionFromSavedRange();
+      } else {
+        updatePosition();
+      }
     };
+
     const onMouseDown = (e: MouseEvent) => {
-      if (toolbarRef.current?.contains(e.target as Node)) return;
-      if (colorMenuRef.current?.contains(e.target as Node)) return;
-      if (fontMenuRef.current?.contains(e.target as Node)) return;
-      // Don't close yet - let selectionchange handle it
+      const target = e.target as Node;
+      // Ignore clicks inside our UI
+      if (toolbarRef.current?.contains(target)) return;
+      if (colorMenuRef.current?.contains(target)) return;
+      if (fontMenuRef.current?.contains(target)) return;
+      if (weightMenuRef.current?.contains(target)) return;
+      if (alignMenuRef.current?.contains(target)) return;
+      if (linkMenuRef.current?.contains(target)) return;
+      if (refMenuRef.current?.contains(target)) return;
+      // Click outside — close all submenus
+      setLinkOpen(false);
+      setRefOpen(false);
+      setColorOpen(false);
+      setFontOpen(false);
+      setWeightOpen(false);
+      setAlignOpen(false);
     };
 
     window.addEventListener('scroll', onScroll, true);
+    document.addEventListener('mousedown', onMouseDown, true);
     return () => {
       window.removeEventListener('scroll', onScroll, true);
+      document.removeEventListener('mousedown', onMouseDown, true);
     };
-  }, [visible, updatePosition]);
+  }, [visible, updatePosition, repositionFromSavedRange]);
 
   // Close submenus when toolbar hides
   useEffect(() => {
@@ -364,6 +432,8 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
       setFontOpen(false);
       setWeightOpen(false);
       setAlignOpen(false);
+      setLinkOpen(false);
+      setRefOpen(false);
     }
   }, [visible]);
 
@@ -459,6 +529,49 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
     setAlignMenuPos({ left, top });
   }, [alignOpen, position]);
 
+  // Position link submenu
+  useLayoutEffect(() => {
+    if (!linkOpen || !linkMenuRef.current || !toolbarRef.current) {
+      setLinkMenuPos(null);
+      return;
+    }
+    const toolbarRect = toolbarRef.current.getBoundingClientRect();
+    const menuRect = linkMenuRef.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let left = toolbarRect.left;
+    let top = toolbarRect.bottom + 4;
+    if (top + menuRect.height > vh - 4) top = toolbarRect.top - menuRect.height - 4;
+    if (left + menuRect.width > vw - 4) left = vw - menuRect.width - 4;
+    if (left < 4) left = 4;
+
+    setLinkMenuPos({ left, top });
+    // Auto-focus input
+    setTimeout(() => linkInputRef.current?.focus(), 0);
+  }, [linkOpen, position]);
+
+  // Position ref submenu
+  useLayoutEffect(() => {
+    if (!refOpen || !refMenuRef.current || !toolbarRef.current) {
+      setRefMenuPos(null);
+      return;
+    }
+    const toolbarRect = toolbarRef.current.getBoundingClientRect();
+    const menuRect = refMenuRef.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let left = toolbarRect.left;
+    let top = toolbarRect.bottom + 4;
+    if (top + menuRect.height > vh - 4) top = toolbarRect.top - menuRect.height - 4;
+    if (left + menuRect.width > vw - 4) left = vw - menuRect.width - 4;
+    if (left < 4) left = 4;
+
+    setRefMenuPos({ left, top });
+    setTimeout(() => refInputRef.current?.focus(), 0);
+  }, [refOpen, position]);
+
   // Apply formatting command
   const applyFormat = useCallback((command: string) => {
     restoreSelection();
@@ -539,6 +652,93 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
     if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
     saveSelection();
     setColorOpen(false);
+  }, [restoreSelection, saveSelection]);
+
+  // Apply external link
+  const applyLink = useCallback((url: string) => {
+    restoreSelection();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      setLinkOpen(false);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const anchor = document.createElement('a');
+    anchor.href = url.startsWith('http') ? url : `https://${url}`;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    anchor.style.color = '#0B6E99'; // Azul from palette
+    anchor.style.textDecoration = 'underline';
+    try {
+      range.surroundContents(anchor);
+    } catch {
+      const fragment = range.extractContents();
+      anchor.appendChild(fragment);
+      range.insertNode(anchor);
+    }
+    sel.removeAllRanges();
+    const newRange = document.createRange();
+    newRange.selectNodeContents(anchor);
+    sel.addRange(newRange);
+    const editable = anchor.closest('[contenteditable]');
+    if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
+    saveSelection();
+    setLinkOpen(false);
+    setLinkUrl('');
+  }, [restoreSelection, saveSelection]);
+
+  // Remove link
+  const removeLink = useCallback(() => {
+    restoreSelection();
+    if (currentLink) {
+      const text = document.createTextNode(currentLink.textContent || '');
+      currentLink.parentNode?.replaceChild(text, currentLink);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        const newRange = document.createRange();
+        newRange.selectNodeContents(text);
+        sel.addRange(newRange);
+      }
+      const editable = text.parentElement?.closest('[contenteditable]');
+      if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
+      setCurrentLink(null);
+      saveSelection();
+    }
+    setLinkOpen(false);
+  }, [restoreSelection, saveSelection, currentLink]);
+
+  // Apply internal reference
+  const applyRef = useCallback((targetBlockId: string) => {
+    restoreSelection();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      setRefOpen(false);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const anchor = document.createElement('a');
+    anchor.setAttribute('data-block-ref', targetBlockId);
+    anchor.href = '#';
+    anchor.style.color = '#6940A5'; // Roxo from palette
+    anchor.style.textDecoration = 'underline';
+    anchor.style.textDecorationStyle = 'dotted';
+    try {
+      range.surroundContents(anchor);
+    } catch {
+      const fragment = range.extractContents();
+      anchor.appendChild(fragment);
+      range.insertNode(anchor);
+    }
+    sel.removeAllRanges();
+    const newRange = document.createRange();
+    newRange.selectNodeContents(anchor);
+    sel.addRange(newRange);
+    const editable = anchor.closest('[contenteditable]');
+    if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
+    saveSelection();
+    setRefOpen(false);
+    setRefSearch('');
   }, [restoreSelection, saveSelection]);
 
   // Check if the selection range covers the entire contents of a span
@@ -686,6 +886,15 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
         e.preventDefault();
         document.execCommand('strikeThrough', false);
         handled = true;
+      } else if (e.key === 'k' && !e.shiftKey) {
+        e.preventDefault();
+        // Toggle link panel — dispatch a custom event the toolbar listens to
+        const sel = window.getSelection();
+        if (sel && !sel.isCollapsed) {
+          const anchor = sel.anchorNode?.parentElement?.closest('a') as HTMLAnchorElement | null;
+          document.dispatchEvent(new CustomEvent('toolbar:toggle-link', { detail: { href: anchor?.href || '' } }));
+        }
+        handled = true;
       } else if (e.key === 'e' && !e.shiftKey) {
         e.preventDefault();
         const sel = window.getSelection();
@@ -728,6 +937,56 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [detectFormats]);
 
+  // Listen for Ctrl+K toggle-link event
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      saveSelection();
+      setLinkUrl(detail?.href || '');
+      setLinkOpen(prev => !prev);
+      setRefOpen(false); setColorOpen(false); setFontOpen(false); setAlignOpen(false);
+    };
+    document.addEventListener('toolbar:toggle-link', handler);
+    return () => document.removeEventListener('toolbar:toggle-link', handler);
+  }, [saveSelection]);
+
+  // Handle clicks on links and internal references within contentEditable
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const anchor = target.closest('a') as HTMLAnchorElement | null;
+      if (!anchor) return;
+      // Must be inside our editor
+      const editable = anchor.closest('[id^="editable-"], [data-table-cell]');
+      if (!editable) return;
+
+      // Internal reference
+      const refId = anchor.getAttribute('data-block-ref');
+      if (refId) {
+        e.preventDefault();
+        e.stopPropagation();
+        const blockEl = document.querySelector(`[data-block-id="${refId}"]`);
+        if (blockEl) {
+          blockEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Brief highlight
+          blockEl.classList.add('bg-purple-50');
+          setTimeout(() => blockEl.classList.remove('bg-purple-50'), 1500);
+        }
+        return;
+      }
+
+      // External link — open on click (not just Cmd+click, since it's a link)
+      if (anchor.href && anchor.href !== '#') {
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(anchor.href, '_blank', 'noopener,noreferrer');
+      }
+    };
+
+    document.addEventListener('click', onClick);
+    return () => document.removeEventListener('click', onClick);
+  }, []);
+
   // Get available weights for the currently selected font
   const currentFontEntry = allFonts.find(f => f.family === currentFont);
   const availableWeights = currentFontEntry?.availableWeights;
@@ -748,7 +1007,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
         <Tooltip label="Fonte" shortcut="">
           <button
             className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 max-w-[100px] ${fontOpen ? 'bg-gray-100' : ''}`}
-            onClick={() => { setFontOpen(!fontOpen); setColorOpen(false); setWeightOpen(false); setAlignOpen(false); }}
+            onClick={() => { setFontOpen(!fontOpen); setColorOpen(false); setWeightOpen(false); setAlignOpen(false); setLinkOpen(false); setRefOpen(false); }}
           >
             <Type size={14} className="shrink-0 relative -top-[0.25px]" />
             <span className="truncate">
@@ -765,7 +1024,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
           <Tooltip label="Peso" shortcut="">
             <button
               className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 ${weightOpen ? 'bg-gray-100' : ''}`}
-              onClick={() => { setWeightOpen(!weightOpen); setFontOpen(false); setColorOpen(false); setAlignOpen(false); }}
+              onClick={() => { setWeightOpen(!weightOpen); setFontOpen(false); setColorOpen(false); setAlignOpen(false); setLinkOpen(false); setRefOpen(false); }}
             >
               <span className="truncate" style={{ fontWeight: currentWeight }}>
                 {currentWeightLabel}
@@ -781,7 +1040,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
         <Tooltip label="Cor" shortcut="">
           <button
             className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${colorOpen ? 'bg-gray-100' : ''}`}
-            onClick={() => { setColorOpen(!colorOpen); setFontOpen(false); setAlignOpen(false); }}
+            onClick={() => { setColorOpen(!colorOpen); setFontOpen(false); setAlignOpen(false); setLinkOpen(false); setRefOpen(false); }}
           >
             <Palette size={16} className="text-gray-600" />
           </button>
@@ -812,7 +1071,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
             <Tooltip label="Alinhamento" shortcut="">
               <button
                 className={`p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 ${alignOpen ? 'bg-gray-100' : ''}`}
-                onClick={() => { setAlignOpen(!alignOpen); setColorOpen(false); setFontOpen(false); setWeightOpen(false); }}
+                onClick={() => { setAlignOpen(!alignOpen); setColorOpen(false); setFontOpen(false); setWeightOpen(false); setLinkOpen(false); setRefOpen(false); }}
               >
                 {currentAlign === 'center' ? <AlignCenter size={16} className="text-gray-600" /> :
                  currentAlign === 'right' ? <AlignRight size={16} className="text-gray-600" /> :
@@ -822,6 +1081,49 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
               </button>
             </Tooltip>
           </>
+        )}
+
+        <div className="w-px h-5 bg-gray-200 mx-0.5" />
+
+        {/* Link button */}
+        <Tooltip label="Link externo" shortcut={`${modKey}+K`}>
+          <button
+            className={`p-1.5 rounded transition-colors ${
+              activeFormats.has('link')
+                ? 'bg-gray-200 text-gray-900'
+                : linkOpen ? 'bg-gray-100 text-gray-600' : 'hover:bg-gray-100 text-gray-600'
+            }`}
+            onClick={() => {
+              if (activeFormats.has('link') && currentLink) {
+                // If already on a link, open the menu to edit/remove
+                setLinkUrl(currentLink.href);
+              } else {
+                setLinkUrl('');
+              }
+              setLinkOpen(!linkOpen);
+              setRefOpen(false); setColorOpen(false); setFontOpen(false); setAlignOpen(false);
+            }}
+          >
+            <Link size={16} />
+          </button>
+        </Tooltip>
+
+        {/* Internal reference button */}
+        {blocks && blocks.length > 0 && (
+          <Tooltip label="Referência interna" shortcut="">
+            <button
+              className={`p-1.5 rounded transition-colors ${
+                refOpen ? 'bg-gray-100 text-gray-600' : 'hover:bg-gray-100 text-gray-600'
+              }`}
+              onClick={() => {
+                setRefSearch('');
+                setRefOpen(!refOpen);
+                setLinkOpen(false); setColorOpen(false); setFontOpen(false); setAlignOpen(false);
+              }}
+            >
+              <BookmarkIcon size={16} />
+            </button>
+          </Tooltip>
         )}
       </div>
 
@@ -1015,6 +1317,121 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
               {a.icon}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Link input dropdown */}
+      {linkOpen && (
+        <div
+          ref={linkMenuRef}
+          className="fixed z-[51] bg-white shadow-xl border border-gray-200 rounded-lg p-3 w-[300px]"
+          style={{
+            left: linkMenuPos?.left ?? 0,
+            top: linkMenuPos?.top ?? 0,
+            visibility: linkMenuPos ? 'visible' : 'hidden',
+          }}
+          onMouseDown={e => { e.stopPropagation(); }}
+        >
+          <div className="text-xs font-medium text-gray-500 mb-2">Link externo</div>
+          <div className="flex gap-2">
+            <input
+              ref={linkInputRef}
+              type="url"
+              className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+              placeholder="https://exemplo.com"
+              value={linkUrl}
+              onChange={e => setLinkUrl(e.target.value)}
+              onKeyDown={e => {
+                e.stopPropagation();
+                if (e.key === 'Enter' && linkUrl.trim()) {
+                  e.preventDefault();
+                  applyLink(linkUrl.trim());
+                }
+                if (e.key === 'Escape') {
+                  setLinkOpen(false);
+                }
+              }}
+              onPaste={e => e.stopPropagation()}
+            />
+            <button
+              className="px-3 py-1.5 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:opacity-40 transition-colors"
+              disabled={!linkUrl.trim()}
+              onClick={() => applyLink(linkUrl.trim())}
+            >
+              <ExternalLink size={14} />
+            </button>
+          </div>
+          {activeFormats.has('link') && currentLink && (
+            <button
+              className="mt-2 flex items-center gap-1 text-xs text-red-500 hover:text-red-700 transition-colors"
+              onClick={removeLink}
+            >
+              <Unlink size={12} />
+              Remover link
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Internal reference dropdown */}
+      {refOpen && blocks && (
+        <div
+          ref={refMenuRef}
+          className="fixed z-[51] bg-white shadow-xl border border-gray-200 rounded-lg p-2 w-[280px] max-h-[300px] flex flex-col"
+          style={{
+            left: refMenuPos?.left ?? 0,
+            top: refMenuPos?.top ?? 0,
+            visibility: refMenuPos ? 'visible' : 'hidden',
+          }}
+          onMouseDown={e => { e.stopPropagation(); }}
+        >
+          <div className="text-xs font-medium text-gray-500 mb-2">Referência interna</div>
+          <div className="relative mb-2">
+            <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              ref={refInputRef}
+              type="text"
+              className="w-full border border-gray-300 rounded px-2 py-1.5 pl-7 text-sm outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
+              placeholder="Buscar bloco..."
+              value={refSearch}
+              onChange={e => setRefSearch(e.target.value)}
+              onKeyDown={e => {
+                e.stopPropagation();
+                if (e.key === 'Escape') setRefOpen(false);
+              }}
+              onPaste={e => e.stopPropagation()}
+            />
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {blocks
+              .filter(b => {
+                if (b.type === 'divider' || b.type === 'table' || b.type === 'image') return false;
+                if (!b.content || b.content === '<br>') return false;
+                const text = b.content.replace(/<[^>]*>/g, '').trim();
+                if (!text) return false;
+                if (refSearch) return text.toLowerCase().includes(refSearch.toLowerCase());
+                return true;
+              })
+              .map(b => {
+                const text = b.content.replace(/<[^>]*>/g, '').trim();
+                const label = text.length > 50 ? text.slice(0, 50) + '...' : text;
+                const typeLabel = b.type === 'h1' ? 'H1' : b.type === 'h2' ? 'H2' : b.type === 'h3' ? 'H3' : '';
+                return (
+                  <button
+                    key={b.id}
+                    className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-purple-50 transition-colors flex items-center gap-2"
+                    onClick={() => applyRef(b.id)}
+                  >
+                    {typeLabel && (
+                      <span className="text-[10px] font-bold text-purple-500 bg-purple-100 px-1 rounded shrink-0">
+                        {typeLabel}
+                      </span>
+                    )}
+                    <span className="truncate text-gray-700">{label}</span>
+                  </button>
+                );
+              })}
+          </div>
         </div>
       )}
     </>

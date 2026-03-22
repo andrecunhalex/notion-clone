@@ -18,6 +18,16 @@ body {
   min-height: 24px;
 }
 
+/* Links inside editable blocks — cursor only, styling is inline so user can change it */
+.editable-block a[href] {
+  cursor: pointer;
+}
+
+/* Smooth highlight transition for reference scroll */
+[data-block-id] {
+  transition: background-color 0.3s ease;
+}
+
 /* Placeholder only when focused and content is empty — absolutely positioned to avoid layout shift */
 .editable-block.is-empty:focus::before {
   content: attr(data-placeholder);
