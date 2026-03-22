@@ -101,6 +101,15 @@ export const Block: React.FC<BlockProps> = ({
     }
   }, [block.id, onHeightChange, blockRef]);
 
+  // Sync is-empty class with content
+  useEffect(() => {
+    if (block.type === 'table' || block.type === 'divider' || block.type === 'image') return;
+    const el = document.getElementById(`editable-${block.id}`);
+    if (el) {
+      el.classList.toggle('is-empty', isContentEmpty(block.content));
+    }
+  }, [block.content, block.id, block.type]);
+
   useEffect(() => {
     if (block.type === 'table' || block.type === 'divider' || block.type === 'image') return;
     const el = document.getElementById(`editable-${block.id}`);
@@ -444,11 +453,15 @@ export const Block: React.FC<BlockProps> = ({
               id={`editable-${block.id}`}
               contentEditable
               suppressContentEditableWarning
-              className={`outline-none empty:before:text-gray-300 cursor-text flex-1 min-w-0 ${BLOCK_STYLES[block.type]} focus:empty:before:content-[attr(data-placeholder)]`}
+              className={`outline-none cursor-text flex-1 min-w-0 editable-block ${BLOCK_STYLES[block.type]}`}
               style={BLOCK_INLINE_STYLES[block.type] || {}}
               data-placeholder={isList ? 'Lista...' : "Digite '/' para comandos..."}
               onKeyDown={handleKeyDown}
-              onInput={e => updateBlock(block.id, { content: e.currentTarget.innerHTML })}
+              onInput={e => {
+                const el = e.currentTarget;
+                el.classList.toggle('is-empty', isContentEmpty(el.innerHTML));
+                updateBlock(block.id, { content: el.innerHTML });
+              }}
               onFocus={onClearSelection}
             />
           </div>

@@ -12,6 +12,9 @@ body {
   word-break: break-word;
 }
 
-[contenteditable]:empty::before {
+/* Placeholder only when focused and content is empty */
+.editable-block.is-empty:focus::before {
   content: attr(data-placeholder);
+  color: #d1d5db;
+  pointer-events: none;
 }
