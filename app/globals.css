@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+/* Notion-like typography */
+body {
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI",
+    Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
+  -webkit-font-smoothing: auto;
+}
+
+[contenteditable] {
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+[contenteditable]:empty::before {
+  content: attr(data-placeholder);
+}

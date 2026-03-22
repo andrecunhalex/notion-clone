@@ -62,7 +62,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
 
   const { blockHeights, handleHeightChange } = usePagination({ blocks, setBlocks, viewMode });
 
-  const { updateBlock, addBlock, addListBlock, removeBlock, deleteSelectedBlocks, moveBlocks } = useBlockManager({
+  const { updateBlock, addBlock, addBlockBefore, addBlockWithContent, addListBlock, removeBlock, mergeWithPrevious, deleteSelectedBlocks, moveBlocks } = useBlockManager({
     blocks, setBlocks
   });
 
@@ -143,7 +143,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       if (dist < minDst) { minDst = dist; closest = b; }
     }
 
-    closest.focus();
+    closest.focus({ preventScroll: true });
     const range = document.createRange();
     const sel = window.getSelection();
     if (sel) {
@@ -196,7 +196,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       const newTextBlock: BlockData = { id: generateId(), type: 'text', content: '' };
       const newBlocks = blocks.map(b =>
         b.id === slashMenu.blockId
-          ? { ...b, type: 'image' as const, content: '', imageData: { src: '', width: 100, alignment: 'center' as const } }
+          ? { ...b, type: 'image' as const, content: '', imageData: { src: '', width: 50, alignment: 'center' as const } }
           : b
       );
       newBlocks.splice(idx + 1, 0, newTextBlock);
@@ -214,7 +214,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         const firstCell = document.querySelector(
           `[data-table-cell="${slashMenu.blockId}-0-0"]`
         ) as HTMLElement;
-        firstCell?.focus();
+        firstCell?.focus({ preventScroll: true });
       }, 50);
     } else {
       if (blockEl) blockEl.innerHTML = cleanContent;
@@ -229,7 +229,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   return (
     <FontLoader>
     <div
-      className={`min-h-screen text-gray-800 font-sans selection:bg-blue-200 ${
+      className={`min-h-screen text-gray-800 selection:bg-blue-200 ${
         selectionBox ? 'select-none' : ''
       } ${viewMode === 'paginated' ? 'bg-gray-100' : 'bg-white'}`}
       onMouseDown={handleMouseDown}
@@ -278,8 +278,11 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
                 isSelected={selectedIds.has(block.id)}
                 updateBlock={updateBlock}
                 addBlock={addBlock}
+                addBlockBefore={addBlockBefore}
+                addBlockWithContent={addBlockWithContent}
                 addListBlock={addListBlock}
                 removeBlock={removeBlock}
+                mergeWithPrevious={mergeWithPrevious}
                 setSlashMenu={setSlashMenu}
                 blockRef={el => (blockRefs.current[block.id] = el)}
                 onDragStart={handleDragStart}

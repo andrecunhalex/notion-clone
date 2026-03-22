@@ -162,8 +162,9 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
         const computed = window.getComputedStyle(el);
         const family = computed.fontFamily;
         const weight = parseInt(computed.fontWeight, 10) || 400;
-        // Try to match against known fonts
-        const matched = allFonts.find(f =>
+        // Try to match against known fonts (prioritize custom fonts over system)
+        const sortedFonts = [...allFonts].sort((a, b) => (b.isCustom ? 1 : 0) - (a.isCustom ? 1 : 0));
+        const matched = sortedFonts.find(f =>
           family.toLowerCase().includes(f.family.split(',')[0].trim().replace(/['"]/g, '').toLowerCase())
         );
         setCurrentFont(matched?.family || '');
@@ -296,7 +297,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
     }
   }, [visible]);
 
-  // Position color submenu
+  // Position color submenu (re-run when toolbar moves)
   useLayoutEffect(() => {
     if (!colorOpen || !colorMenuRef.current || !toolbarRef.current) {
       setColorMenuPos(null);
@@ -307,22 +308,19 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
     const vh = window.innerHeight;
     const vw = window.innerWidth;
 
-    // Position below the toolbar, aligned to the left of the color button area
     let left = toolbarRect.left;
     let top = toolbarRect.bottom + 4;
 
-    // If goes off bottom, show above toolbar
     if (top + colorRect.height > vh - 4) {
       top = toolbarRect.top - colorRect.height - 4;
     }
-    // Clamp horizontal
     if (left + colorRect.width > vw - 4) left = vw - colorRect.width - 4;
     if (left < 4) left = 4;
 
     setColorMenuPos({ left, top });
-  }, [colorOpen]);
+  }, [colorOpen, position]);
 
-  // Position font submenu
+  // Position font submenu (re-run when toolbar moves)
   useLayoutEffect(() => {
     if (!fontOpen || !fontMenuRef.current || !toolbarRef.current) {
       setFontMenuPos(null);
@@ -343,9 +341,9 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
     if (left < 4) left = 4;
 
     setFontMenuPos({ left, top });
-  }, [fontOpen]);
+  }, [fontOpen, position]);
 
-  // Position weight submenu
+  // Position weight submenu (re-run when toolbar moves)
   useLayoutEffect(() => {
     if (!weightOpen || !weightMenuRef.current || !toolbarRef.current) {
       setWeightMenuPos(null);
@@ -366,7 +364,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
     if (left < 4) left = 4;
 
     setWeightMenuPos({ left, top });
-  }, [weightOpen]);
+  }, [weightOpen, position]);
 
   // Apply formatting command
   const applyFormat = useCallback((command: string) => {

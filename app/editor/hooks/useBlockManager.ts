@@ -23,6 +23,88 @@ export const useBlockManager = ({ blocks, setBlocks }: UseBlockManagerProps) => 
     focusBlock(newBlock.id);
   }, [blocks, setBlocks]);
 
+  const addBlockBefore = useCallback((beforeId: string) => {
+    const index = blocks.findIndex(b => b.id === beforeId);
+    const newBlock: BlockData = { id: generateId(), type: 'text', content: '' };
+    const newBlocks = [...blocks];
+    newBlocks.splice(index, 0, newBlock);
+    setBlocks(newBlocks);
+    // Keep focus on the original block at the start
+    focusBlock(beforeId, 'start');
+  }, [blocks, setBlocks]);
+
+  const addBlockWithContent = useCallback((afterId: string, content: string) => {
+    const index = blocks.findIndex(b => b.id === afterId);
+    const newBlock: BlockData = { id: generateId(), type: 'text', content };
+    const newBlocks = [...blocks];
+    newBlocks.splice(index + 1, 0, newBlock);
+    setBlocks(newBlocks);
+    focusBlock(newBlock.id, 'start');
+  }, [blocks, setBlocks]);
+
+  const mergeWithPrevious = useCallback((id: string) => {
+    const index = blocks.findIndex(b => b.id === id);
+    if (index <= 0) return;
+    const prevBlock = blocks[index - 1];
+    // Can only merge with text-like blocks
+    if (prevBlock.type === 'divider' || prevBlock.type === 'table' || prevBlock.type === 'image') return;
+    const currentBlock = blocks[index];
+    const prevContent = prevBlock.content || '';
+    const currentContent = currentBlock.content || '';
+    // Remember cursor position: it should be at the end of the previous block's content
+    const mergedContent = prevContent + currentContent;
+    const newBlocks = blocks.filter(b => b.id !== id);
+    const prevIdx = newBlocks.findIndex(b => b.id === prevBlock.id);
+    newBlocks[prevIdx] = { ...prevBlock, content: mergedContent };
+    setBlocks(newBlocks);
+    // Focus previous block and place cursor at the join point
+    setTimeout(() => {
+      const el = document.getElementById(`editable-${prevBlock.id}`);
+      if (el) {
+        el.innerHTML = mergedContent;
+        el.focus({ preventScroll: true });
+        // Place cursor at the end of the old previous content
+        if (prevContent) {
+          const range = document.createRange();
+          const sel = window.getSelection();
+          // Walk through text nodes to find the right position
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = prevContent;
+          const prevTextLength = tempDiv.textContent?.length || 0;
+          let charCount = 0;
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          let placed = false;
+          while (walker.nextNode()) {
+            const node = walker.currentNode as Text;
+            const nodeLen = node.textContent?.length || 0;
+            if (charCount + nodeLen >= prevTextLength) {
+              range.setStart(node, prevTextLength - charCount);
+              range.collapse(true);
+              sel?.removeAllRanges();
+              sel?.addRange(range);
+              placed = true;
+              break;
+            }
+            charCount += nodeLen;
+          }
+          if (!placed) {
+            range.selectNodeContents(el);
+            range.collapse(false);
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+          }
+        } else {
+          const range = document.createRange();
+          const sel = window.getSelection();
+          range.setStart(el, 0);
+          range.collapse(true);
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+        }
+      }
+    }, 0);
+  }, [blocks, setBlocks]);
+
   const removeBlock = useCallback((id: string) => {
     if (blocks.length === 1) return;
     const index = blocks.findIndex(b => b.id === id);
@@ -75,8 +157,11 @@ export const useBlockManager = ({ blocks, setBlocks }: UseBlockManagerProps) => 
   return {
     updateBlock,
     addBlock,
+    addBlockBefore,
+    addBlockWithContent,
     addListBlock,
     removeBlock,
+    mergeWithPrevious,
     deleteSelectedBlocks,
     moveBlocks
   };

@@ -92,17 +92,17 @@ export const getPaginatedBlocks = (
 };
 
 // Foca no elemento editável de um bloco
-export const focusBlock = (blockId: string, collapseToEnd = true) => {
+export const focusBlock = (blockId: string, position: 'end' | 'start' | false = 'end') => {
   setTimeout(() => {
     const el = document.getElementById(`editable-${blockId}`);
     if (el) {
-      el.focus();
-      if (collapseToEnd) {
+      el.focus({ preventScroll: true });
+      if (position) {
         const range = document.createRange();
         const sel = window.getSelection();
         if (sel) {
           range.selectNodeContents(el);
-          range.collapse(false);
+          range.collapse(position === 'start');
           sel.removeAllRanges();
           sel.addRange(range);
         }

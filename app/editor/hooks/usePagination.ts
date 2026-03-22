@@ -161,10 +161,10 @@ export const usePagination = ({ blocks, setBlocks, viewMode }: UsePaginationProp
         newBlocks.splice(index, 1, newBlock1, newBlock2);
         setBlocks(newBlocks);
 
-        // Joga o foco para o novo bloco na próxima página
+        // Joga o foco para o novo bloco na próxima página (sem scroll)
         requestAnimationFrame(() => {
           const nextEl = document.getElementById(`editable-${newBlock2.id}`);
-          if (nextEl) nextEl.focus();
+          if (nextEl) nextEl.focus({ preventScroll: true });
         });
       }
     }

@@ -52,7 +52,7 @@ export const WEIGHT_LABELS: Record<number, string> = {
 
 // --- Fontes do sistema (sempre disponíveis) ---
 export const SYSTEM_FONTS: FontEntry[] = [
-  { name: 'Padrão', family: 'system-ui, -apple-system, sans-serif' },
+  { name: 'Padrão', family: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol"' },
   { name: 'Serif', family: 'Georgia, "Times New Roman", serif' },
   { name: 'Mono', family: 'ui-monospace, "Cascadia Code", Menlo, monospace' },
 ];
@@ -78,14 +78,29 @@ export async function fetchFontFamilies(): Promise<FontFamily[]> {
   return data.families;
 }
 
+// System font names that could collide with custom font folder names
+const SYSTEM_FONT_NAMES = new Set(
+  SYSTEM_FONTS.flatMap(f =>
+    f.family.split(',').map(s => s.trim().replace(/['"]/g, '').toLowerCase())
+  )
+);
+
+/** Get the CSS font-family name, disambiguating from system fonts */
+export function getCssFontFamily(name: string): string {
+  if (SYSTEM_FONT_NAMES.has(name.toLowerCase())) {
+    return `${name} Custom`;
+  }
+  return name;
+}
+
 /** Convert FontFamily[] to FontEntry[] for the selector dropdown */
 export function fontFamiliesToEntries(families: FontFamily[]): FontEntry[] {
   return families.map(f => {
-    // Dedupe and sort available weights (only non-italic to avoid duplicates)
     const weights = [...new Set(f.variants.map(v => v.weight))].sort((a, b) => a - b);
+    const cssFamily = getCssFontFamily(f.name);
     return {
       name: f.name,
-      family: f.name,
+      family: cssFamily,
       isCustom: true,
       availableWeights: weights,
     };
@@ -96,9 +111,10 @@ export function fontFamiliesToEntries(families: FontFamily[]): FontEntry[] {
 export function generateFontFaceCSS(families: FontFamily[]): string {
   const rules: string[] = [];
   for (const family of families) {
+    const cssFamily = getCssFontFamily(family.name);
     for (const variant of family.variants) {
       rules.push(`@font-face {
-  font-family: '${family.name}';
+  font-family: '${cssFamily}';
   src: url('/fonts/${variant.file}') format('${getFontFormat(variant.file)}');
   font-weight: ${variant.weight};
   font-style: ${variant.style};

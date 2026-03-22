@@ -13,8 +13,11 @@ interface BlockProps {
   isSelected: boolean;
   updateBlock: (id: string, updates: Partial<BlockData>) => void;
   addBlock: (afterId: string) => void;
+  addBlockBefore: (beforeId: string) => void;
+  addBlockWithContent: (afterId: string, content: string) => void;
   addListBlock: (afterId: string, type: BlockType, indent: number) => void;
   removeBlock: (id: string) => void;
+  mergeWithPrevious: (id: string) => void;
   setSlashMenu: Dispatch<SetStateAction<SlashMenuState>>;
   blockRef: (el: HTMLDivElement | null) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
@@ -28,25 +31,34 @@ interface BlockProps {
 }
 
 const BLOCK_STYLES: Record<string, string> = {
-  h1: 'text-4xl font-bold my-0 p-0 text-gray-900 leading-none',
-  h2: 'text-2xl font-semibold my-0 p-0 text-gray-800 leading-none',
-  h3: 'text-xl font-semibold my-0 p-0 text-gray-800 leading-none',
-  text: 'text-base my-1 text-gray-700 leading-relaxed',
-  bullet_list: 'text-base my-0 text-gray-700 leading-relaxed',
-  numbered_list: 'text-base my-0 text-gray-700 leading-relaxed',
+  h1: 'font-bold my-0 p-0 text-gray-900',
+  h2: 'font-semibold my-0 p-0 text-gray-800',
+  h3: 'font-semibold my-0 p-0 text-gray-800',
+  text: 'my-0 text-gray-700',
+  bullet_list: 'my-0 text-gray-700',
+  numbered_list: 'my-0 text-gray-700',
   divider: '',
   table: '',
   image: '',
 };
 
+const BLOCK_INLINE_STYLES: Record<string, React.CSSProperties> = {
+  h1: { fontSize: '1.875em', lineHeight: 1.3 },
+  h2: { fontSize: '1.5em', lineHeight: 1.3 },
+  h3: { fontSize: '1.25em', lineHeight: 1.3 },
+  text: { fontSize: '16px', lineHeight: 1.5 },
+  bullet_list: { fontSize: '16px', lineHeight: 1.5 },
+  numbered_list: { fontSize: '16px', lineHeight: 1.5 },
+};
+
 // Handle wrapper height matches each block's first line height for vertical centering
 const HANDLE_LINE: Record<string, string> = {
-  h1: 'h-9',             // 36px = text-4xl with leading-none
-  h2: 'h-6',             // 24px = text-2xl with leading-none
-  h3: 'h-5',             // 20px = text-xl with leading-none
-  text: 'h-[26px] mt-1', // 26px = text-base * leading-relaxed, mt-1 matches text's my-1
-  bullet_list: 'h-[26px]',
-  numbered_list: 'h-[26px]',
+  h1: 'h-[39px]',
+  h2: 'h-[31px]',
+  h3: 'h-[26px]',
+  text: 'h-[24px]',
+  bullet_list: 'h-[24px]',
+  numbered_list: 'h-[24px]',
   divider: 'h-4',
   table: 'h-6',
   image: 'h-6',
@@ -57,8 +69,11 @@ export const Block: React.FC<BlockProps> = ({
   isSelected,
   updateBlock,
   addBlock,
+  addBlockBefore,
+  addBlockWithContent,
   addListBlock,
   removeBlock,
+  mergeWithPrevious,
   setSlashMenu,
   blockRef,
   onDragStart,
@@ -137,22 +152,74 @@ export const Block: React.FC<BlockProps> = ({
       e.preventDefault();
       if (isList) {
         if (isContentEmpty(block.content)) {
-          // Empty list item → convert to text
           updateBlock(block.id, { type: 'text', indent: undefined });
         } else {
           addListBlock(block.id, block.type, indent);
         }
       } else {
-        addBlock(block.id);
+        // Check if cursor is at the start of the block
+        const sel = window.getSelection();
+        const el = document.getElementById(`editable-${block.id}`);
+        let atStart = false;
+        if (sel && el && sel.rangeCount > 0) {
+          const range = sel.getRangeAt(0);
+          const preRange = document.createRange();
+          preRange.setStart(el, 0);
+          preRange.setEnd(range.startContainer, range.startOffset);
+          const textBefore = preRange.toString();
+          atStart = textBefore.length === 0;
+        }
+        if (atStart && !isContentEmpty(block.content)) {
+          // Insert empty block BEFORE current block (Notion behavior)
+          addBlockBefore(block.id);
+        } else {
+          // Split: text after cursor goes to new block
+          if (el && sel && sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            range.deleteContents();
+            // Extract everything after cursor
+            const afterRange = document.createRange();
+            afterRange.setStart(range.endContainer, range.endOffset);
+            afterRange.setEndAfter(el.lastChild || el);
+            const fragment = afterRange.extractContents();
+            const temp = document.createElement('div');
+            temp.appendChild(fragment);
+            const afterContent = temp.innerHTML;
+            // Update current block with content before cursor
+            updateBlock(block.id, { content: el.innerHTML });
+            // Add new block with content after cursor
+            addBlockWithContent(block.id, afterContent);
+          } else {
+            addBlock(block.id);
+          }
+        }
       }
     }
 
-    if (e.key === 'Backspace' && isContentEmpty(block.content)) {
-      e.preventDefault();
-      if (isList) {
-        updateBlock(block.id, { type: 'text', indent: undefined });
+    if (e.key === 'Backspace') {
+      if (isContentEmpty(block.content)) {
+        e.preventDefault();
+        if (isList) {
+          updateBlock(block.id, { type: 'text', indent: undefined });
+        } else {
+          removeBlock(block.id);
+        }
       } else {
-        removeBlock(block.id);
+        // Check if cursor is at the very start
+        const sel = window.getSelection();
+        const el = document.getElementById(`editable-${block.id}`);
+        if (sel && el && sel.rangeCount > 0 && sel.isCollapsed) {
+          const range = sel.getRangeAt(0);
+          const preRange = document.createRange();
+          preRange.setStart(el, 0);
+          preRange.setEnd(range.startContainer, range.startOffset);
+          const textBefore = preRange.toString();
+          if (textBefore.length === 0) {
+            e.preventDefault();
+            // Merge with previous block
+            mergeWithPrevious(block.id);
+          }
+        }
       }
     }
 
@@ -181,7 +248,7 @@ export const Block: React.FC<BlockProps> = ({
         const editables = candidate.querySelectorAll('[contenteditable]');
         if (editables.length > 0) {
           const target = editables[editables.length - 1] as HTMLElement;
-          target.focus();
+          target.focus({ preventScroll: true });
           // Place cursor at the end of the last line
           const range = document.createRange();
           const s = window.getSelection();
@@ -226,7 +293,7 @@ export const Block: React.FC<BlockProps> = ({
       while (candidate) {
         const editable = candidate.querySelector('[contenteditable]') as HTMLElement | null;
         if (editable) {
-          editable.focus();
+          editable.focus({ preventScroll: true });
           // Place cursor at the start of the first line
           const range = document.createRange();
           const s = window.getSelection();
@@ -286,7 +353,7 @@ export const Block: React.FC<BlockProps> = ({
     <div
       ref={internalRef}
       data-block-id={block.id}
-      className="group relative flex items-start -ml-12 pr-2 py-0.5 my-0.5"
+      className="group relative flex items-start -ml-12 pr-2 py-[1px] my-[1px]"
       onDragOver={e => onDragOver(e, block.id)}
       onDrop={e => { e.stopPropagation(); onDrop(e); }}
     >
@@ -339,7 +406,7 @@ export const Block: React.FC<BlockProps> = ({
                 }
                 while (candidate) {
                   const editable = candidate.querySelector('[contenteditable]') as HTMLElement | null;
-                  if (editable) { editable.focus(); break; }
+                  if (editable) { editable.focus({ preventScroll: true }); break; }
                   const next = candidate.nextSibling as HTMLElement | null;
                   if (next) { candidate = next; } else {
                     const page = candidate.parentElement;
@@ -359,7 +426,7 @@ export const Block: React.FC<BlockProps> = ({
                 }
                 while (candidate) {
                   const editables = candidate.querySelectorAll('[contenteditable]');
-                  if (editables.length > 0) { (editables[editables.length - 1] as HTMLElement).focus(); break; }
+                  if (editables.length > 0) { (editables[editables.length - 1] as HTMLElement).focus({ preventScroll: true }); break; }
                   const prev = candidate.previousSibling as HTMLElement | null;
                   if (prev) { candidate = prev; } else {
                     const page = candidate.parentElement;
@@ -378,6 +445,7 @@ export const Block: React.FC<BlockProps> = ({
               contentEditable
               suppressContentEditableWarning
               className={`outline-none empty:before:text-gray-300 cursor-text flex-1 min-w-0 ${BLOCK_STYLES[block.type]} focus:empty:before:content-[attr(data-placeholder)]`}
+              style={BLOCK_INLINE_STYLES[block.type] || {}}
               data-placeholder={isList ? 'Lista...' : "Digite '/' para comandos..."}
               onKeyDown={handleKeyDown}
               onInput={e => updateBlock(block.id, { content: e.currentTarget.innerHTML })}

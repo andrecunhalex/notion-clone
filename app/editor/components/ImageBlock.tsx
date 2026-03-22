@@ -12,7 +12,7 @@ interface ImageBlockProps {
 
 const DEFAULT_IMAGE_DATA: ImageData = {
   src: '',
-  width: 100,
+  width: 50,
   alignment: 'center',
 };
 
@@ -23,6 +23,7 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
   const [showToolbar, setShowToolbar] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const resizeStartRef = useRef<{ startX: number; startWidth: number; side: 'left' | 'right' } | null>(null);
+  const didAutoOpen = useRef(false);
 
   const update = useCallback((updates: Partial<ImageData>) => {
     updateBlock(block.id, {
@@ -50,6 +51,15 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
     };
     input.click();
   }, [handleFileSelect]);
+
+  // Auto-open file picker when the image block is first created with no src
+  useEffect(() => {
+    if (!imageData.src && !didAutoOpen.current) {
+      didAutoOpen.current = true;
+      // Small delay to let the component mount
+      setTimeout(() => handleUploadClick(), 50);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -83,24 +93,25 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
   useEffect(() => {
     if (!isResizing) return;
 
+    // Prevent text selection and scroll jumps during resize
+    document.body.style.userSelect = 'none';
+    document.body.style.webkitUserSelect = 'none';
+
     const handleMouseMove = (e: MouseEvent) => {
       if (!resizeStartRef.current || !containerRef.current) return;
+      e.preventDefault();
 
       const { startX, startWidth, side } = resizeStartRef.current;
       const containerWidth = containerRef.current.offsetWidth;
       const deltaX = e.clientX - startX;
 
-      // Both sides should resize symmetrically for center alignment
-      // For left/right alignment, only one side matters
       let newPixelWidth: number;
       if (imageData.alignment === 'center') {
-        // Dragging either side moves both edges
         const effectiveDelta = side === 'right' ? deltaX : -deltaX;
         newPixelWidth = startWidth + effectiveDelta * 2;
       } else if (imageData.alignment === 'left') {
         newPixelWidth = side === 'right' ? startWidth + deltaX : startWidth - deltaX;
       } else {
-        // right alignment
         newPixelWidth = side === 'left' ? startWidth - deltaX : startWidth + deltaX;
       }
 
@@ -111,6 +122,8 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
     const handleMouseUp = () => {
       setIsResizing(false);
       resizeStartRef.current = null;
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -118,6 +131,8 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
     };
   }, [isResizing, imageData.alignment, update]);
 
