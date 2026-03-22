@@ -217,6 +217,14 @@ export const Block: React.FC<BlockProps> = ({
       return;
     }
 
+    // Tab inserts a tab stop for non-list blocks
+    if (e.key === 'Tab' && !isList) {
+      e.preventDefault();
+      if (e.shiftKey) return; // no-op for shift+tab on text
+      document.execCommand('insertHTML', false, '\u00A0\u00A0\u00A0\u00A0');
+      return;
+    }
+
     if (e.key === '/') {
       setTimeout(() => {
         const selection = window.getSelection();
@@ -433,7 +441,7 @@ export const Block: React.FC<BlockProps> = ({
               contentEditable
               suppressContentEditableWarning
               className={`outline-none cursor-text flex-1 min-w-0 editable-block ${BLOCK_STYLES[block.type]}`}
-              style={BLOCK_INLINE_STYLES[block.type] || {}}
+              style={{ ...(BLOCK_INLINE_STYLES[block.type] || {}), ...(block.align ? { textAlign: block.align } : {}) }}
               data-placeholder={isList ? 'Lista...' : "Digite '/' para comandos..."}
               onKeyDown={handleKeyDown}
               onInput={e => {

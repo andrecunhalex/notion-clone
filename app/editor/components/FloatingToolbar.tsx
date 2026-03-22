@@ -3,9 +3,11 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
   Bold, Italic, Underline, Strikethrough, Code, Link, ChevronRight,
-  Palette, Type, ChevronDown
+  Palette, Type, ChevronDown,
+  AlignLeft, AlignCenter, AlignRight, AlignJustify
 } from 'lucide-react';
 import { FontEntry, WEIGHT_LABELS } from '../fonts';
+import { BlockData, TextAlign } from '../types';
 import { useFonts } from './FontLoader';
 
 // --- Color constants (same as TableBlock) ---
@@ -86,9 +88,11 @@ const normalizeColor = (color: string): string => {
 // --- Main component ---
 interface FloatingToolbarProps {
   documentFont?: string;
+  blocks?: BlockData[];
+  updateBlock?: (id: string, updates: Partial<BlockData>) => void;
 }
 
-export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }) => {
+export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, blocks, updateBlock }) => {
   const { allFonts, customFonts } = useFonts();
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -112,6 +116,23 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
   const [weightOpen, setWeightOpen] = useState(false);
   const weightMenuRef = useRef<HTMLDivElement>(null);
   const [weightMenuPos, setWeightMenuPos] = useState<{ left: number; top: number } | null>(null);
+
+  // Alignment state
+  const [currentAlign, setCurrentAlign] = useState<TextAlign>('left');
+  const [alignOpen, setAlignOpen] = useState(false);
+  const alignMenuRef = useRef<HTMLDivElement>(null);
+  const [alignMenuPos, setAlignMenuPos] = useState<{ left: number; top: number } | null>(null);
+
+  // Find the block ID from the current selection
+  const getSelectedBlockId = useCallback((): string | null => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const el = sel.anchorNode?.nodeType === Node.ELEMENT_NODE
+      ? sel.anchorNode as HTMLElement
+      : sel.anchorNode?.parentElement;
+    const editable = el?.closest('[id^="editable-"]');
+    return editable?.id?.replace('editable-', '') || null;
+  }, []);
 
   // Store the selection range so we can restore it after button clicks
   const savedRange = useRef<Range | null>(null);
@@ -211,8 +232,15 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
         }
         setCurrentBgColor(detectedBgColor);
       }
+
+      // Detect block alignment
+      const blockId = getSelectedBlockId();
+      if (blockId && blocks) {
+        const block = blocks.find(b => b.id === blockId);
+        setCurrentAlign(block?.align || 'left');
+      }
     }
-  }, [allFonts]);
+  }, [allFonts, blocks, getSelectedBlockId]);
 
   // Check if selection is inside an editable block or table cell
   const isInEditable = useCallback((): boolean => {
@@ -335,6 +363,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
       setColorOpen(false);
       setFontOpen(false);
       setWeightOpen(false);
+      setAlignOpen(false);
     }
   }, [visible]);
 
@@ -406,6 +435,29 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
 
     setWeightMenuPos({ left, top });
   }, [weightOpen, position]);
+
+  // Position align submenu (re-run when toolbar moves)
+  useLayoutEffect(() => {
+    if (!alignOpen || !alignMenuRef.current || !toolbarRef.current) {
+      setAlignMenuPos(null);
+      return;
+    }
+    const toolbarRect = toolbarRef.current.getBoundingClientRect();
+    const menuRect = alignMenuRef.current.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    let left = toolbarRect.right - menuRect.width;
+    let top = toolbarRect.bottom + 4;
+
+    if (top + menuRect.height > vh - 4) {
+      top = toolbarRect.top - menuRect.height - 4;
+    }
+    if (left + menuRect.width > vw - 4) left = vw - menuRect.width - 4;
+    if (left < 4) left = 4;
+
+    setAlignMenuPos({ left, top });
+  }, [alignOpen, position]);
 
   // Apply formatting command
   const applyFormat = useCallback((command: string) => {
@@ -696,7 +748,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
         <Tooltip label="Fonte" shortcut="">
           <button
             className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 max-w-[100px] ${fontOpen ? 'bg-gray-100' : ''}`}
-            onClick={() => { setFontOpen(!fontOpen); setColorOpen(false); setWeightOpen(false); }}
+            onClick={() => { setFontOpen(!fontOpen); setColorOpen(false); setWeightOpen(false); setAlignOpen(false); }}
           >
             <Type size={14} className="shrink-0 relative -top-[0.25px]" />
             <span className="truncate">
@@ -713,7 +765,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
           <Tooltip label="Peso" shortcut="">
             <button
               className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 ${weightOpen ? 'bg-gray-100' : ''}`}
-              onClick={() => { setWeightOpen(!weightOpen); setFontOpen(false); setColorOpen(false); }}
+              onClick={() => { setWeightOpen(!weightOpen); setFontOpen(false); setColorOpen(false); setAlignOpen(false); }}
             >
               <span className="truncate" style={{ fontWeight: currentWeight }}>
                 {currentWeightLabel}
@@ -729,7 +781,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
         <Tooltip label="Cor" shortcut="">
           <button
             className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${colorOpen ? 'bg-gray-100' : ''}`}
-            onClick={() => { setColorOpen(!colorOpen); setFontOpen(false); }}
+            onClick={() => { setColorOpen(!colorOpen); setFontOpen(false); setAlignOpen(false); }}
           >
             <Palette size={16} className="text-gray-600" />
           </button>
@@ -752,6 +804,25 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
             </button>
           </Tooltip>
         ))}
+
+        {/* Alignment dropdown button */}
+        {updateBlock && (
+          <>
+            <div className="w-px h-5 bg-gray-200 mx-0.5" />
+            <Tooltip label="Alinhamento" shortcut="">
+              <button
+                className={`p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 ${alignOpen ? 'bg-gray-100' : ''}`}
+                onClick={() => { setAlignOpen(!alignOpen); setColorOpen(false); setFontOpen(false); setWeightOpen(false); }}
+              >
+                {currentAlign === 'center' ? <AlignCenter size={16} className="text-gray-600" /> :
+                 currentAlign === 'right' ? <AlignRight size={16} className="text-gray-600" /> :
+                 currentAlign === 'justify' ? <AlignJustify size={16} className="text-gray-600" /> :
+                 <AlignLeft size={16} className="text-gray-600" />}
+                <ChevronDown size={10} className="text-gray-400" />
+              </button>
+            </Tooltip>
+          </>
+        )}
       </div>
 
       {/* Color picker dropdown */}
@@ -900,6 +971,48 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
               {currentWeight === w && (
                 <span className="text-blue-500 text-xs">&#10003;</span>
               )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Alignment picker dropdown */}
+      {alignOpen && updateBlock && (
+        <div
+          ref={alignMenuRef}
+          className="fixed z-[51] bg-white shadow-xl border border-gray-200 rounded-lg p-1 flex items-center gap-0.5"
+          style={{
+            left: alignMenuPos?.left ?? 0,
+            top: alignMenuPos?.top ?? 0,
+            visibility: alignMenuPos ? 'visible' : 'hidden',
+          }}
+          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
+        >
+          {([
+            { align: 'left' as TextAlign, icon: <AlignLeft size={16} />, label: 'Esquerda' },
+            { align: 'center' as TextAlign, icon: <AlignCenter size={16} />, label: 'Centro' },
+            { align: 'right' as TextAlign, icon: <AlignRight size={16} />, label: 'Direita' },
+            { align: 'justify' as TextAlign, icon: <AlignJustify size={16} />, label: 'Justificar' },
+          ]).map(a => (
+            <button
+              key={a.align}
+              className={`p-1.5 rounded transition-colors ${
+                currentAlign === a.align
+                  ? 'bg-gray-200 text-gray-900'
+                  : 'hover:bg-gray-100 text-gray-600'
+              }`}
+              title={a.label}
+              onClick={() => {
+                restoreSelection();
+                const blockId = getSelectedBlockId();
+                if (blockId) {
+                  updateBlock(blockId, { align: a.align === 'left' ? undefined : a.align });
+                  setCurrentAlign(a.align);
+                }
+                setAlignOpen(false);
+              }}
+            >
+              {a.icon}
             </button>
           ))}
         </div>

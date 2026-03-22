@@ -310,7 +310,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         />
       )}
 
-      {!slashMenu.isOpen && <FloatingToolbar documentFont={documentFont} />}
+      {!slashMenu.isOpen && <FloatingToolbar documentFont={documentFont} blocks={blocks} updateBlock={updateBlock} />}
     </div>
     </FontLoader>
   );

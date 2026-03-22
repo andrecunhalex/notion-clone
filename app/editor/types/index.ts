@@ -23,11 +23,14 @@ export interface ImageData {
   caption?: string;
 }
 
+export type TextAlign = 'left' | 'center' | 'right' | 'justify';
+
 export interface BlockData {
   id: string;
   type: BlockType;
   content: string;
   indent?: number;
+  align?: TextAlign;
   tableData?: TableData;
   imageData?: ImageData;
 }
