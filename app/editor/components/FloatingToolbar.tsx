@@ -1,48 +1,24 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import React from 'react';
 import {
-  Bold, Italic, Underline, Strikethrough, Code, Link, ChevronRight,
-  Palette, Type, ChevronDown,
+  Bold, Italic, Underline, Strikethrough,
+  Link, Palette, Type, ChevronDown,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  ExternalLink, BookmarkIcon, Unlink, Search
+  BookmarkIcon,
 } from 'lucide-react';
-import { FontEntry, WEIGHT_LABELS } from '../fonts';
-import { BlockData, TextAlign } from '../types';
+import { WEIGHT_LABELS } from '../fonts';
+import { BlockData } from '../types';
+import { modKey, shiftKey } from '../constants';
 import { useFonts } from './FontLoader';
-
-// --- Color constants (same as TableBlock) ---
-
-const TEXT_COLORS = [
-  { name: 'Padrão', value: '', preview: '#37352F', border: true },
-  { name: 'Cinza', value: '#9B9A97', preview: '#9B9A97' },
-  { name: 'Marrom', value: '#64473A', preview: '#64473A' },
-  { name: 'Laranja', value: '#D9730D', preview: '#D9730D' },
-  { name: 'Amarelo', value: '#DFAB01', preview: '#DFAB01' },
-  { name: 'Verde', value: '#0F7B6C', preview: '#0F7B6C' },
-  { name: 'Azul', value: '#0B6E99', preview: '#0B6E99' },
-  { name: 'Roxo', value: '#6940A5', preview: '#6940A5' },
-  { name: 'Rosa', value: '#AD1A72', preview: '#AD1A72' },
-  { name: 'Vermelho', value: '#E03E3E', preview: '#E03E3E' },
-];
-
-const BG_COLORS = [
-  { name: 'Padrão', value: '', preview: '#FFFFFF', border: true },
-  { name: 'Cinza', value: '#F1F1EF', preview: '#F1F1EF' },
-  { name: 'Marrom', value: '#F4EEEE', preview: '#F4EEEE' },
-  { name: 'Laranja', value: '#FBECDD', preview: '#FBECDD' },
-  { name: 'Amarelo', value: '#FBF3DB', preview: '#FBF3DB' },
-  { name: 'Verde', value: '#EDF3EC', preview: '#EDF3EC' },
-  { name: 'Azul', value: '#E7F3F8', preview: '#E7F3F8' },
-  { name: 'Roxo', value: '#F6F3F9', preview: '#F6F3F9' },
-  { name: 'Rosa', value: '#F9F0F5', preview: '#F9F0F5' },
-  { name: 'Vermelho', value: '#FBE4E4', preview: '#FBE4E4' },
-];
-
-// --- OS detection ---
-const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
-const modKey = isMac ? '⌘' : 'Ctrl';
-const shiftKey = isMac ? '⇧' : 'Shift';
+import { useFloatingToolbar } from '../hooks/useFloatingToolbar';
+import { Tooltip } from './toolbar/Tooltip';
+import { ColorPicker } from './toolbar/ColorPicker';
+import { FontPicker } from './toolbar/FontPicker';
+import { WeightPicker } from './toolbar/WeightPicker';
+import { AlignmentPicker } from './toolbar/AlignmentPicker';
+import { LinkInput } from './toolbar/LinkInput';
+import { RefPicker } from './toolbar/RefPicker';
 
 // --- Formatting actions ---
 interface FormatAction {
@@ -58,33 +34,7 @@ const FORMAT_ACTIONS: FormatAction[] = [
   { id: 'italic', icon: <Italic size={16} />, label: 'Itálico', shortcut: `${modKey}+I`, command: 'italic' },
   { id: 'underline', icon: <Underline size={16} />, label: 'Sublinhado', shortcut: `${modKey}+U`, command: 'underline' },
   { id: 'strikethrough', icon: <Strikethrough size={16} />, label: 'Tachado', shortcut: `${modKey}+${shiftKey}+X`, command: 'strikeThrough' },
-  // { id: 'code', icon: <Code size={16} />, label: 'Código', shortcut: `${modKey}+E`, command: 'code' },
 ];
-
-// --- Tooltip component ---
-const Tooltip: React.FC<{ label: string; shortcut: string; children: React.ReactNode }> = ({ label, shortcut, children }) => {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="relative" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-      {children}
-      {show && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap z-[60] pointer-events-none">
-          <span>{label}</span>
-          <span className="ml-1.5 text-gray-400">{shortcut}</span>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// --- Color comparison helper (DOM returns rgb(), our constants use hex) ---
-const normalizeColor = (color: string): string => {
-  if (!color) return '';
-  const ctx = document.createElement('canvas').getContext('2d');
-  if (!ctx) return color.toLowerCase();
-  ctx.fillStyle = color;
-  return ctx.fillStyle.toLowerCase(); // always returns #rrggbb
-};
 
 // --- Main component ---
 interface FloatingToolbarProps {
@@ -95,938 +45,48 @@ interface FloatingToolbarProps {
 
 export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, blocks, updateBlock }) => {
   const { allFonts, customFonts } = useFonts();
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-  const [position, setPosition] = useState({ left: 0, top: 0 });
-  const [colorOpen, setColorOpen] = useState(false);
-  const colorMenuRef = useRef<HTMLDivElement>(null);
-  const [colorMenuPos, setColorMenuPos] = useState<{ left: number; top: number } | null>(null);
-  const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set());
-  const [currentTextColor, setCurrentTextColor] = useState<string>('');
-  const [currentBgColor, setCurrentBgColor] = useState<string>('');
 
+  const toolbar = useFloatingToolbar({ documentFont, blocks, updateBlock, allFonts });
 
-  // Font picker state
-  const [fontOpen, setFontOpen] = useState(false);
-  const fontMenuRef = useRef<HTMLDivElement>(null);
-  const [fontMenuPos, setFontMenuPos] = useState<{ left: number; top: number } | null>(null);
-  const [currentFont, setCurrentFont] = useState<string>('');
-  const [currentWeight, setCurrentWeight] = useState<number>(400);
-
-  // Weight picker state
-  const [weightOpen, setWeightOpen] = useState(false);
-  const weightMenuRef = useRef<HTMLDivElement>(null);
-  const [weightMenuPos, setWeightMenuPos] = useState<{ left: number; top: number } | null>(null);
-
-  // Alignment state
-  const [currentAlign, setCurrentAlign] = useState<TextAlign>('left');
-  const [alignOpen, setAlignOpen] = useState(false);
-  const alignMenuRef = useRef<HTMLDivElement>(null);
-  const [alignMenuPos, setAlignMenuPos] = useState<{ left: number; top: number } | null>(null);
-
-  // Link state
-  const [linkOpen, setLinkOpen] = useState(false);
-  const linkMenuRef = useRef<HTMLDivElement>(null);
-  const [linkMenuPos, setLinkMenuPos] = useState<{ left: number; top: number } | null>(null);
-  const [linkUrl, setLinkUrl] = useState('');
-  const [currentLink, setCurrentLink] = useState<HTMLAnchorElement | null>(null);
-  const linkInputRef = useRef<HTMLInputElement>(null);
-
-  // Reference (internal link) state
-  const [refOpen, setRefOpen] = useState(false);
-  const refMenuRef = useRef<HTMLDivElement>(null);
-  const [refMenuPos, setRefMenuPos] = useState<{ left: number; top: number } | null>(null);
-  const [refSearch, setRefSearch] = useState('');
-  const refInputRef = useRef<HTMLInputElement>(null);
-
-  // Find the block ID from the current selection
-  const getSelectedBlockId = useCallback((): string | null => {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return null;
-    const el = sel.anchorNode?.nodeType === Node.ELEMENT_NODE
-      ? sel.anchorNode as HTMLElement
-      : sel.anchorNode?.parentElement;
-    const editable = el?.closest('[id^="editable-"]');
-    return editable?.id?.replace('editable-', '') || null;
-  }, []);
-
-  // Store the selection range so we can restore it after button clicks
-  const savedRange = useRef<Range | null>(null);
-
-  // Walk up the DOM to find the closest styled <span> (with fontFamily or fontWeight)
-  const findStyledSpan = useCallback((node: Node | null): HTMLSpanElement | null => {
-    if (!node) return null;
-    let el: HTMLElement | null = node.nodeType === Node.ELEMENT_NODE
-      ? node as HTMLElement
-      : node.parentElement;
-    while (el && !el.hasAttribute('contenteditable')) {
-      if (el.tagName === 'SPAN' && (el.style.fontFamily || el.style.fontWeight)) {
-        return el as HTMLSpanElement;
-      }
-      el = el.parentElement;
-    }
-    return null;
-  }, []);
-
-  const saveSelection = useCallback(() => {
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0) {
-      savedRange.current = sel.getRangeAt(0).cloneRange();
-    }
-  }, []);
-
-  const restoreSelection = useCallback(() => {
-    if (savedRange.current) {
-      const sel = window.getSelection();
-      if (sel) {
-        sel.removeAllRanges();
-        sel.addRange(savedRange.current);
-      }
-    }
-  }, []);
-
-  // Detect active formats at current selection
-  const detectFormats = useCallback(() => {
-    const formats = new Set<string>();
-    try {
-      if (document.queryCommandState('bold')) formats.add('bold');
-      if (document.queryCommandState('italic')) formats.add('italic');
-      if (document.queryCommandState('underline')) formats.add('underline');
-      if (document.queryCommandState('strikeThrough')) formats.add('strikethrough');
-      // Check for code: look if selection is inside a <code> element
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const node = sel.anchorNode?.parentElement;
-        if (node?.closest('code')) formats.add('code');
-        // Check for link
-        const anchor = node?.closest('a') as HTMLAnchorElement | null;
-        if (anchor) {
-          formats.add('link');
-          setCurrentLink(anchor);
-        } else {
-          setCurrentLink(null);
-        }
-      }
-    } catch { /* ignore */ }
-    setActiveFormats(formats);
-
-    // Detect current font, weight, and colors at selection
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0) {
-      const node = sel.anchorNode;
-      const el = node?.nodeType === Node.ELEMENT_NODE ? node as HTMLElement : (node as Node)?.parentElement;
-      if (el) {
-        const computed = window.getComputedStyle(el);
-        const family = computed.fontFamily;
-        const weight = parseInt(computed.fontWeight, 10) || 400;
-        // Try to match against known fonts (prioritize custom fonts over system)
-        const sortedFonts = [...allFonts].sort((a, b) => (b.isCustom ? 1 : 0) - (a.isCustom ? 1 : 0));
-        const matched = sortedFonts.find(f =>
-          family.toLowerCase().includes(f.family.split(',')[0].trim().replace(/['"]/g, '').toLowerCase())
-        );
-        setCurrentFont(matched?.family || '');
-        setCurrentWeight(weight);
-
-        // Detect text color — walk up to find an explicit color (from foreColor / <font color>)
-        let colorEl: HTMLElement | null = el;
-        let detectedTextColor = '';
-        while (colorEl && !colorEl.hasAttribute('contenteditable')) {
-          if (colorEl.style.color) {
-            detectedTextColor = colorEl.style.color;
-            break;
-          }
-          if (colorEl.tagName === 'FONT' && colorEl.getAttribute('color')) {
-            detectedTextColor = colorEl.getAttribute('color') || '';
-            break;
-          }
-          colorEl = colorEl.parentElement;
-        }
-        setCurrentTextColor(detectedTextColor);
-
-        // Detect background color — walk up to find an explicit backgroundColor (from hiliteColor)
-        let bgEl: HTMLElement | null = el;
-        let detectedBgColor = '';
-        while (bgEl && !bgEl.hasAttribute('contenteditable')) {
-          const bg = bgEl.style.backgroundColor;
-          if (bg && bg !== 'transparent') {
-            detectedBgColor = bg;
-            break;
-          }
-          bgEl = bgEl.parentElement;
-        }
-        setCurrentBgColor(detectedBgColor);
-      }
-
-      // Detect block alignment
-      const blockId = getSelectedBlockId();
-      if (blockId && blocks) {
-        const block = blocks.find(b => b.id === blockId);
-        setCurrentAlign(block?.align || 'left');
-      }
-    }
-  }, [allFonts, blocks, getSelectedBlockId]);
-
-  // Check if selection is inside an editable block or table cell
-  const isInEditable = useCallback((): boolean => {
-    const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return false;
-    const anchor = sel.anchorNode;
-    if (!anchor) return false;
-    const el = anchor.nodeType === Node.ELEMENT_NODE ? anchor as Element : anchor.parentElement;
-    if (!el) return false;
-    // Check if inside a contentEditable element within our editor
-    const editable = el.closest('[contenteditable="true"], [contenteditable=""]');
-    if (!editable) return false;
-    // Must be inside our editor (has editable-* id or data-table-cell)
-    return !!(editable.id?.startsWith('editable-') || editable.hasAttribute('data-table-cell'));
-  }, []);
-
-  // Ref to track whether a submenu with an input is open — avoids stale closure issues
-  const inputSubmenuOpenRef = useRef(false);
-  inputSubmenuOpenRef.current = linkOpen || refOpen;
-
-  // Position the toolbar above the selection
-  const updatePosition = useCallback(() => {
-    // Don't hide when an input submenu is open (selection is lost when input gets focus)
-    if (inputSubmenuOpenRef.current) return;
-
-    const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
-      setVisible(false);
-      return;
-    }
-
-    if (!isInEditable()) {
-      setVisible(false);
-      return;
-    }
-
-    const range = sel.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) {
-      setVisible(false);
-      return;
-    }
-
-    setVisible(true);
-    detectFormats();
-    saveSelection();
-  }, [isInEditable, detectFormats, saveSelection]);
-
-  // Reposition toolbar from savedRange (for when input submenu is open and user scrolls)
-  const repositionFromSavedRange = useCallback(() => {
-    if (!toolbarRef.current || !savedRange.current) return;
-    const rect = savedRange.current.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) return;
-    const toolbarRect = toolbarRef.current.getBoundingClientRect();
-    const vh = window.innerHeight;
-    const vw = window.innerWidth;
-
-    let left = rect.left + rect.width / 2 - toolbarRect.width / 2;
-    let top = rect.top - toolbarRect.height - 8;
-    if (top < 4) top = rect.bottom + 8;
-    if (left < 4) left = 4;
-    if (left + toolbarRect.width > vw - 4) left = vw - toolbarRect.width - 4;
-    if (top + toolbarRect.height > vh - 4) top = vh - toolbarRect.height - 4;
-
-    setPosition({ left, top });
-  }, []);
-
-  // Use layoutEffect to position after visible is set
-  useLayoutEffect(() => {
-    if (!visible || !toolbarRef.current) return;
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-
-    const range = sel.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    const toolbarRect = toolbarRef.current.getBoundingClientRect();
-    const vh = window.innerHeight;
-    const vw = window.innerWidth;
-
-    let left = rect.left + rect.width / 2 - toolbarRect.width / 2;
-    let top = rect.top - toolbarRect.height - 8;
-
-    // If doesn't fit above, show below
-    if (top < 4) {
-      top = rect.bottom + 8;
-    }
-    // Clamp horizontal
-    if (left < 4) left = 4;
-    if (left + toolbarRect.width > vw - 4) left = vw - toolbarRect.width - 4;
-    // Clamp vertical
-    if (top + toolbarRect.height > vh - 4) top = vh - toolbarRect.height - 4;
-
-    setPosition({ left, top });
-  }, [visible, activeFormats]);
-
-  // Listen for selection changes
-  useEffect(() => {
-    let debounceTimer: ReturnType<typeof setTimeout>;
-
-    const onSelectionChange = () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        updatePosition();
-      }, 50);
-    };
-
-    const onMouseUp = () => {
-      // Small delay to let selection finalize
-      setTimeout(updatePosition, 10);
-    };
-
-    document.addEventListener('selectionchange', onSelectionChange);
-    document.addEventListener('mouseup', onMouseUp);
-
-    return () => {
-      clearTimeout(debounceTimer);
-      document.removeEventListener('selectionchange', onSelectionChange);
-      document.removeEventListener('mouseup', onMouseUp);
-    };
-  }, [updatePosition]);
-
-  // Reposition on scroll + close menus on click outside
-  useEffect(() => {
-    if (!visible) return;
-
-    const onScroll = () => {
-      if (inputSubmenuOpenRef.current) {
-        repositionFromSavedRange();
-      } else {
-        updatePosition();
-      }
-    };
-
-    const onMouseDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      // Ignore clicks inside our UI
-      if (toolbarRef.current?.contains(target)) return;
-      if (colorMenuRef.current?.contains(target)) return;
-      if (fontMenuRef.current?.contains(target)) return;
-      if (weightMenuRef.current?.contains(target)) return;
-      if (alignMenuRef.current?.contains(target)) return;
-      if (linkMenuRef.current?.contains(target)) return;
-      if (refMenuRef.current?.contains(target)) return;
-      // Click outside — close all submenus
-      setLinkOpen(false);
-      setRefOpen(false);
-      setColorOpen(false);
-      setFontOpen(false);
-      setWeightOpen(false);
-      setAlignOpen(false);
-    };
-
-    window.addEventListener('scroll', onScroll, true);
-    document.addEventListener('mousedown', onMouseDown, true);
-    return () => {
-      window.removeEventListener('scroll', onScroll, true);
-      document.removeEventListener('mousedown', onMouseDown, true);
-    };
-  }, [visible, updatePosition, repositionFromSavedRange]);
-
-  // Close submenus when toolbar hides
-  useEffect(() => {
-    if (!visible) {
-      setColorOpen(false);
-      setFontOpen(false);
-      setWeightOpen(false);
-      setAlignOpen(false);
-      setLinkOpen(false);
-      setRefOpen(false);
-    }
-  }, [visible]);
-
-  // Position color submenu (re-run when toolbar moves)
-  useLayoutEffect(() => {
-    if (!colorOpen || !colorMenuRef.current || !toolbarRef.current) {
-      setColorMenuPos(null);
-      return;
-    }
-    const toolbarRect = toolbarRef.current.getBoundingClientRect();
-    const colorRect = colorMenuRef.current.getBoundingClientRect();
-    const vh = window.innerHeight;
-    const vw = window.innerWidth;
-
-    let left = toolbarRect.left;
-    let top = toolbarRect.bottom + 4;
-
-    if (top + colorRect.height > vh - 4) {
-      top = toolbarRect.top - colorRect.height - 4;
-    }
-    if (left + colorRect.width > vw - 4) left = vw - colorRect.width - 4;
-    if (left < 4) left = 4;
-
-    setColorMenuPos({ left, top });
-  }, [colorOpen, position]);
-
-  // Position font submenu (re-run when toolbar moves)
-  useLayoutEffect(() => {
-    if (!fontOpen || !fontMenuRef.current || !toolbarRef.current) {
-      setFontMenuPos(null);
-      return;
-    }
-    const toolbarRect = toolbarRef.current.getBoundingClientRect();
-    const fontRect = fontMenuRef.current.getBoundingClientRect();
-    const vh = window.innerHeight;
-    const vw = window.innerWidth;
-
-    let left = toolbarRect.left;
-    let top = toolbarRect.bottom + 4;
-
-    if (top + fontRect.height > vh - 4) {
-      top = toolbarRect.top - fontRect.height - 4;
-    }
-    if (left + fontRect.width > vw - 4) left = vw - fontRect.width - 4;
-    if (left < 4) left = 4;
-
-    setFontMenuPos({ left, top });
-  }, [fontOpen, position]);
-
-  // Position weight submenu (re-run when toolbar moves)
-  useLayoutEffect(() => {
-    if (!weightOpen || !weightMenuRef.current || !toolbarRef.current) {
-      setWeightMenuPos(null);
-      return;
-    }
-    const toolbarRect = toolbarRef.current.getBoundingClientRect();
-    const menuRect = weightMenuRef.current.getBoundingClientRect();
-    const vh = window.innerHeight;
-    const vw = window.innerWidth;
-
-    let left = toolbarRect.left;
-    let top = toolbarRect.bottom + 4;
-
-    if (top + menuRect.height > vh - 4) {
-      top = toolbarRect.top - menuRect.height - 4;
-    }
-    if (left + menuRect.width > vw - 4) left = vw - menuRect.width - 4;
-    if (left < 4) left = 4;
-
-    setWeightMenuPos({ left, top });
-  }, [weightOpen, position]);
-
-  // Position align submenu (re-run when toolbar moves)
-  useLayoutEffect(() => {
-    if (!alignOpen || !alignMenuRef.current || !toolbarRef.current) {
-      setAlignMenuPos(null);
-      return;
-    }
-    const toolbarRect = toolbarRef.current.getBoundingClientRect();
-    const menuRect = alignMenuRef.current.getBoundingClientRect();
-    const vh = window.innerHeight;
-    const vw = window.innerWidth;
-
-    let left = toolbarRect.right - menuRect.width;
-    let top = toolbarRect.bottom + 4;
-
-    if (top + menuRect.height > vh - 4) {
-      top = toolbarRect.top - menuRect.height - 4;
-    }
-    if (left + menuRect.width > vw - 4) left = vw - menuRect.width - 4;
-    if (left < 4) left = 4;
-
-    setAlignMenuPos({ left, top });
-  }, [alignOpen, position]);
-
-  // Position link submenu
-  useLayoutEffect(() => {
-    if (!linkOpen || !linkMenuRef.current || !toolbarRef.current) {
-      setLinkMenuPos(null);
-      return;
-    }
-    const toolbarRect = toolbarRef.current.getBoundingClientRect();
-    const menuRect = linkMenuRef.current.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-
-    let left = toolbarRect.left;
-    let top = toolbarRect.bottom + 4;
-    if (top + menuRect.height > vh - 4) top = toolbarRect.top - menuRect.height - 4;
-    if (left + menuRect.width > vw - 4) left = vw - menuRect.width - 4;
-    if (left < 4) left = 4;
-
-    setLinkMenuPos({ left, top });
-    // Auto-focus input
-    setTimeout(() => linkInputRef.current?.focus(), 0);
-  }, [linkOpen, position]);
-
-  // Position ref submenu
-  useLayoutEffect(() => {
-    if (!refOpen || !refMenuRef.current || !toolbarRef.current) {
-      setRefMenuPos(null);
-      return;
-    }
-    const toolbarRect = toolbarRef.current.getBoundingClientRect();
-    const menuRect = refMenuRef.current.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-
-    let left = toolbarRect.left;
-    let top = toolbarRect.bottom + 4;
-    if (top + menuRect.height > vh - 4) top = toolbarRect.top - menuRect.height - 4;
-    if (left + menuRect.width > vw - 4) left = vw - menuRect.width - 4;
-    if (left < 4) left = 4;
-
-    setRefMenuPos({ left, top });
-    setTimeout(() => refInputRef.current?.focus(), 0);
-  }, [refOpen, position]);
-
-  // Apply formatting command
-  const applyFormat = useCallback((command: string) => {
-    restoreSelection();
-
-    if (command === 'code') {
-      // Toggle inline code by wrapping/unwrapping with <code>
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
-      const range = sel.getRangeAt(0);
-      const parent = sel.anchorNode?.parentElement;
-      if (parent?.tagName === 'CODE') {
-        // Unwrap: replace <code> with its text content
-        const text = document.createTextNode(parent.textContent || '');
-        parent.parentNode?.replaceChild(text, parent);
-        const newRange = document.createRange();
-        newRange.selectNodeContents(text);
-        sel.removeAllRanges();
-        sel.addRange(newRange);
-      } else {
-        const code = document.createElement('code');
-        code.className = 'bg-gray-100 text-red-500 px-1 py-0.5 rounded text-[0.9em] font-mono';
-        try {
-          range.surroundContents(code);
-          sel.removeAllRanges();
-          const newRange = document.createRange();
-          newRange.selectNodeContents(code);
-          sel.addRange(newRange);
-        } catch {
-          // surroundContents fails if selection crosses element boundaries
-          const fragment = range.extractContents();
-          code.appendChild(fragment);
-          range.insertNode(code);
-          sel.removeAllRanges();
-          const newRange = document.createRange();
-          newRange.selectNodeContents(code);
-          sel.addRange(newRange);
-        }
-      }
-      // Trigger input event so content is saved
-      const editable = sel.anchorNode?.parentElement?.closest('[contenteditable]');
-      if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
-    } else {
-      document.execCommand(command, false);
-    }
-
-    saveSelection();
-    detectFormats();
-  }, [restoreSelection, saveSelection, detectFormats]);
-
-  // Apply text color
-  const applyTextColor = useCallback((color: string) => {
-    restoreSelection();
-    if (color) {
-      document.execCommand('foreColor', false, color);
-    } else {
-      // Remove color - set to inherit
-      document.execCommand('removeFormat', false);
-      // Re-apply other formats that were active
-    }
-    const sel = window.getSelection();
-    const editable = sel?.anchorNode?.parentElement?.closest('[contenteditable]');
-    if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
-    saveSelection();
-    setColorOpen(false);
-  }, [restoreSelection, saveSelection]);
-
-  // Apply background color
-  const applyBgColor = useCallback((color: string) => {
-    restoreSelection();
-    if (color) {
-      document.execCommand('hiliteColor', false, color);
-    } else {
-      // Remove highlight
-      document.execCommand('hiliteColor', false, 'transparent');
-    }
-    const sel = window.getSelection();
-    const editable = sel?.anchorNode?.parentElement?.closest('[contenteditable]');
-    if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
-    saveSelection();
-    setColorOpen(false);
-  }, [restoreSelection, saveSelection]);
-
-  // Apply external link
-  const applyLink = useCallback((url: string) => {
-    restoreSelection();
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
-      setLinkOpen(false);
-      return;
-    }
-    const range = sel.getRangeAt(0);
-    const anchor = document.createElement('a');
-    anchor.href = url.startsWith('http') ? url : `https://${url}`;
-    anchor.target = '_blank';
-    anchor.rel = 'noopener noreferrer';
-    anchor.style.color = '#0B6E99'; // Azul from palette
-    anchor.style.textDecoration = 'underline';
-    try {
-      range.surroundContents(anchor);
-    } catch {
-      const fragment = range.extractContents();
-      anchor.appendChild(fragment);
-      range.insertNode(anchor);
-    }
-    sel.removeAllRanges();
-    const newRange = document.createRange();
-    newRange.selectNodeContents(anchor);
-    sel.addRange(newRange);
-    const editable = anchor.closest('[contenteditable]');
-    if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
-    saveSelection();
-    setLinkOpen(false);
-    setLinkUrl('');
-  }, [restoreSelection, saveSelection]);
-
-  // Remove link
-  const removeLink = useCallback(() => {
-    restoreSelection();
-    if (currentLink) {
-      const text = document.createTextNode(currentLink.textContent || '');
-      currentLink.parentNode?.replaceChild(text, currentLink);
-      const sel = window.getSelection();
-      if (sel) {
-        sel.removeAllRanges();
-        const newRange = document.createRange();
-        newRange.selectNodeContents(text);
-        sel.addRange(newRange);
-      }
-      const editable = text.parentElement?.closest('[contenteditable]');
-      if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
-      setCurrentLink(null);
-      saveSelection();
-    }
-    setLinkOpen(false);
-  }, [restoreSelection, saveSelection, currentLink]);
-
-  // Apply internal reference
-  const applyRef = useCallback((targetBlockId: string) => {
-    restoreSelection();
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
-      setRefOpen(false);
-      return;
-    }
-    const range = sel.getRangeAt(0);
-    const anchor = document.createElement('a');
-    anchor.setAttribute('data-block-ref', targetBlockId);
-    anchor.href = '#';
-    anchor.style.color = '#6940A5'; // Roxo from palette
-    anchor.style.textDecoration = 'underline';
-    anchor.style.textDecorationStyle = 'dotted';
-    try {
-      range.surroundContents(anchor);
-    } catch {
-      const fragment = range.extractContents();
-      anchor.appendChild(fragment);
-      range.insertNode(anchor);
-    }
-    sel.removeAllRanges();
-    const newRange = document.createRange();
-    newRange.selectNodeContents(anchor);
-    sel.addRange(newRange);
-    const editable = anchor.closest('[contenteditable]');
-    if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
-    saveSelection();
-    setRefOpen(false);
-    setRefSearch('');
-  }, [restoreSelection, saveSelection]);
-
-  // Check if the selection range covers the entire contents of a span
-  const selectionCoversSpan = useCallback((range: Range, span: HTMLElement): boolean => {
-    const spanRange = document.createRange();
-    spanRange.selectNodeContents(span);
-    return (
-      range.compareBoundaryPoints(Range.START_TO_START, spanRange) <= 0 &&
-      range.compareBoundaryPoints(Range.END_TO_END, spanRange) >= 0
-    );
-  }, []);
-
-  // Wrap a range in a new span, copying relevant styles from a parent span if present
-  const wrapRangeInSpan = useCallback((range: Range, sel: Selection, styles: Partial<CSSStyleDeclaration>, parentSpan?: HTMLElement | null) => {
-    const span = document.createElement('span');
-    // Copy existing styles from parent span so the new span inherits font+weight
-    if (parentSpan) {
-      if (parentSpan.style.fontFamily) span.style.fontFamily = parentSpan.style.fontFamily;
-      if (parentSpan.style.fontWeight) span.style.fontWeight = parentSpan.style.fontWeight;
-    }
-    // Apply the new styles on top
-    if (styles.fontFamily !== undefined) span.style.fontFamily = styles.fontFamily;
-    if (styles.fontWeight !== undefined) span.style.fontWeight = styles.fontWeight;
-    try {
-      range.surroundContents(span);
-    } catch {
-      const fragment = range.extractContents();
-      span.appendChild(fragment);
-      range.insertNode(span);
-    }
-    sel.removeAllRanges();
-    const newRange = document.createRange();
-    newRange.selectNodeContents(span);
-    sel.addRange(newRange);
-  }, []);
-
-  // Apply font family to selection
-  const applyFont = useCallback((font: FontEntry) => {
-    restoreSelection();
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
-      setFontOpen(false);
-      return;
-    }
-
-    const range = sel.getRangeAt(0);
-    const styledSpan = findStyledSpan(sel.anchorNode);
-    const isDefault = !font.isCustom && font.family === allFonts[0].family;
-    const coversAll = styledSpan && styledSpan.contains(sel.focusNode) && selectionCoversSpan(range, styledSpan);
-
-    if (coversAll && styledSpan) {
-      // Selection covers the entire span — modify in place
-      if (isDefault) {
-        const text = document.createTextNode(styledSpan.textContent || '');
-        styledSpan.parentNode?.replaceChild(text, styledSpan);
-        sel.removeAllRanges();
-        const newRange = document.createRange();
-        newRange.selectNodeContents(text);
-        sel.addRange(newRange);
-      } else {
-        styledSpan.style.fontFamily = font.family;
-        sel.removeAllRanges();
-        const newRange = document.createRange();
-        newRange.selectNodeContents(styledSpan);
-        sel.addRange(newRange);
-      }
-    } else {
-      // Partial selection or no existing span — wrap in a new span
-      if (isDefault) {
-        setFontOpen(false);
-        return;
-      }
-      wrapRangeInSpan(range, sel, { fontFamily: font.family }, styledSpan);
-    }
-
-    const editable = (sel.anchorNode?.parentElement ?? sel.anchorNode as HTMLElement)?.closest?.('[contenteditable]');
-    if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
-    saveSelection();
-    setCurrentFont(font.family);
-    setFontOpen(false);
-  }, [restoreSelection, saveSelection, allFonts, findStyledSpan, selectionCoversSpan, wrapRangeInSpan]);
-
-  // Apply font-weight to selection
-  const applyWeight = useCallback((weight: number) => {
-    restoreSelection();
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
-      setWeightOpen(false);
-      return;
-    }
-
-    const range = sel.getRangeAt(0);
-    const styledSpan = findStyledSpan(sel.anchorNode);
-    const coversAll = styledSpan && styledSpan.contains(sel.focusNode) && selectionCoversSpan(range, styledSpan);
-    const weightVal = weight === 400 ? '' : String(weight);
-
-    if (coversAll && styledSpan) {
-      // Selection covers the entire span — modify in place
-      styledSpan.style.fontWeight = weightVal;
-      sel.removeAllRanges();
-      const newRange = document.createRange();
-      newRange.selectNodeContents(styledSpan);
-      sel.addRange(newRange);
-    } else {
-      if (weight === 400) {
-        setWeightOpen(false);
-        return;
-      }
-      wrapRangeInSpan(range, sel, { fontWeight: String(weight) }, styledSpan);
-    }
-
-    const editable = (sel.anchorNode?.parentElement ?? sel.anchorNode as HTMLElement)?.closest?.('[contenteditable]');
-    if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
-    saveSelection();
-    setCurrentWeight(weight);
-    setWeightOpen(false);
-  }, [restoreSelection, saveSelection, findStyledSpan, selectionCoversSpan, wrapRangeInSpan]);
-
-  // Keyboard shortcuts for formatting
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const mod = isMac ? e.metaKey : e.ctrlKey;
-      if (!mod) return;
-
-      const active = document.activeElement;
-      if (!active || !(active as HTMLElement).isContentEditable) return;
-      const editable = active.closest('[contenteditable]') as HTMLElement;
-      if (!editable) return;
-      if (!editable.id?.startsWith('editable-') && !editable.hasAttribute('data-table-cell')) return;
-
-      let handled = false;
-      if (e.key === 'b' && !e.shiftKey) {
-        e.preventDefault();
-        document.execCommand('bold', false);
-        handled = true;
-      } else if (e.key === 'i' && !e.shiftKey) {
-        e.preventDefault();
-        document.execCommand('italic', false);
-        handled = true;
-      } else if (e.key === 'u' && !e.shiftKey) {
-        e.preventDefault();
-        document.execCommand('underline', false);
-        handled = true;
-      } else if (e.key === 'x' && e.shiftKey) {
-        e.preventDefault();
-        document.execCommand('strikeThrough', false);
-        handled = true;
-      } else if (e.key === 'k' && !e.shiftKey) {
-        e.preventDefault();
-        // Toggle link panel — dispatch a custom event the toolbar listens to
-        const sel = window.getSelection();
-        if (sel && !sel.isCollapsed) {
-          const anchor = sel.anchorNode?.parentElement?.closest('a') as HTMLAnchorElement | null;
-          document.dispatchEvent(new CustomEvent('toolbar:toggle-link', { detail: { href: anchor?.href || '' } }));
-        }
-        handled = true;
-      } else if (e.key === 'e' && !e.shiftKey) {
-        e.preventDefault();
-        const sel = window.getSelection();
-        if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
-          const range = sel.getRangeAt(0);
-          const parent = sel.anchorNode?.parentElement;
-          if (parent?.tagName === 'CODE') {
-            const text = document.createTextNode(parent.textContent || '');
-            parent.parentNode?.replaceChild(text, parent);
-            const newRange = document.createRange();
-            newRange.selectNodeContents(text);
-            sel.removeAllRanges();
-            sel.addRange(newRange);
-          } else {
-            const code = document.createElement('code');
-            code.className = 'bg-gray-100 text-red-500 px-1 py-0.5 rounded text-[0.9em] font-mono';
-            try {
-              range.surroundContents(code);
-            } catch {
-              const fragment = range.extractContents();
-              code.appendChild(fragment);
-              range.insertNode(code);
-            }
-            sel.removeAllRanges();
-            const newRange = document.createRange();
-            newRange.selectNodeContents(code);
-            sel.addRange(newRange);
-          }
-        }
-        handled = true;
-      }
-
-      if (handled) {
-        editable.dispatchEvent(new Event('input', { bubbles: true }));
-        detectFormats();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [detectFormats]);
-
-  // Listen for Ctrl+K toggle-link event
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      saveSelection();
-      setLinkUrl(detail?.href || '');
-      setLinkOpen(prev => !prev);
-      setRefOpen(false); setColorOpen(false); setFontOpen(false); setAlignOpen(false);
-    };
-    document.addEventListener('toolbar:toggle-link', handler);
-    return () => document.removeEventListener('toolbar:toggle-link', handler);
-  }, [saveSelection]);
-
-  // Handle clicks on links and internal references within contentEditable
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const anchor = target.closest('a') as HTMLAnchorElement | null;
-      if (!anchor) return;
-      // Must be inside our editor
-      const editable = anchor.closest('[id^="editable-"], [data-table-cell]');
-      if (!editable) return;
-
-      // Internal reference
-      const refId = anchor.getAttribute('data-block-ref');
-      if (refId) {
-        e.preventDefault();
-        e.stopPropagation();
-        const blockEl = document.querySelector(`[data-block-id="${refId}"]`);
-        if (blockEl) {
-          blockEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Brief highlight
-          blockEl.classList.add('bg-purple-50');
-          setTimeout(() => blockEl.classList.remove('bg-purple-50'), 1500);
-        }
-        return;
-      }
-
-      // External link — open on click (not just Cmd+click, since it's a link)
-      if (anchor.href && anchor.href !== '#') {
-        e.preventDefault();
-        e.stopPropagation();
-        window.open(anchor.href, '_blank', 'noopener,noreferrer');
-      }
-    };
-
-    document.addEventListener('click', onClick);
-    return () => document.removeEventListener('click', onClick);
-  }, []);
-
-  // Get available weights for the currently selected font
-  const currentFontEntry = allFonts.find(f => f.family === currentFont);
+  const currentFontEntry = allFonts.find(f => f.family === toolbar.currentFont);
   const availableWeights = currentFontEntry?.availableWeights;
-  const currentWeightLabel = WEIGHT_LABELS[currentWeight] || String(currentWeight);
+  const currentWeightLabel = WEIGHT_LABELS[toolbar.currentWeight] || String(toolbar.currentWeight);
 
-  if (!visible) return null;
+  if (!toolbar.visible) return null;
 
   return (
     <>
       {/* Main toolbar */}
       <div
-        ref={toolbarRef}
+        ref={toolbar.toolbarRef}
         className="fixed z-50 bg-white shadow-lg border border-gray-200 rounded-lg p-1 flex items-center gap-0.5"
-        style={{ left: position.left, top: position.top }}
+        style={{ left: toolbar.position.left, top: toolbar.position.top }}
         onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
       >
         {/* Font button */}
         <Tooltip label="Fonte" shortcut="">
           <button
-            className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 max-w-[100px] ${fontOpen ? 'bg-gray-100' : ''}`}
-            onClick={() => { setFontOpen(!fontOpen); setColorOpen(false); setWeightOpen(false); setAlignOpen(false); setLinkOpen(false); setRefOpen(false); }}
+            className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 max-w-[100px] ${toolbar.fontOpen ? 'bg-gray-100' : ''}`}
+            onClick={() => { toolbar.setFontOpen(!toolbar.fontOpen); toolbar.closeSubmenusExcept('font'); }}
           >
             <Type size={14} className="shrink-0 relative -top-[0.25px]" />
             <span className="truncate">
-              {currentFont
-                ? allFonts.find(f => f.family === currentFont)?.name || 'Fonte'
+              {toolbar.currentFont
+                ? allFonts.find(f => f.family === toolbar.currentFont)?.name || 'Fonte'
                 : 'Fonte'}
             </span>
             <ChevronDown size={10} />
           </button>
         </Tooltip>
 
-        {/* Weight button — only show when a custom font with multiple weights is active */}
+        {/* Weight button */}
         {availableWeights && availableWeights.length > 1 && (
           <Tooltip label="Peso" shortcut="">
             <button
-              className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 ${weightOpen ? 'bg-gray-100' : ''}`}
-              onClick={() => { setWeightOpen(!weightOpen); setFontOpen(false); setColorOpen(false); setAlignOpen(false); setLinkOpen(false); setRefOpen(false); }}
+              className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 ${toolbar.weightOpen ? 'bg-gray-100' : ''}`}
+              onClick={() => { toolbar.setWeightOpen(!toolbar.weightOpen); toolbar.closeSubmenusExcept('weight'); }}
             >
-              <span className="truncate" style={{ fontWeight: currentWeight }}>
+              <span className="truncate" style={{ fontWeight: toolbar.currentWeight }}>
                 {currentWeightLabel}
               </span>
               <ChevronDown size={10} />
@@ -1039,8 +99,8 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
         {/* Color button */}
         <Tooltip label="Cor" shortcut="">
           <button
-            className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${colorOpen ? 'bg-gray-100' : ''}`}
-            onClick={() => { setColorOpen(!colorOpen); setFontOpen(false); setAlignOpen(false); setLinkOpen(false); setRefOpen(false); }}
+            className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${toolbar.colorOpen ? 'bg-gray-100' : ''}`}
+            onClick={() => { toolbar.setColorOpen(!toolbar.colorOpen); toolbar.closeSubmenusExcept('color'); }}
           >
             <Palette size={16} className="text-gray-600" />
           </button>
@@ -1053,29 +113,29 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
           <Tooltip key={action.id} label={action.label} shortcut={action.shortcut}>
             <button
               className={`p-1.5 rounded transition-colors ${
-                activeFormats.has(action.id)
+                toolbar.activeFormats.has(action.id)
                   ? 'bg-gray-200 text-gray-900'
                   : 'hover:bg-gray-100 text-gray-600'
               }`}
-              onClick={() => applyFormat(action.command)}
+              onClick={() => toolbar.applyFormat(action.command)}
             >
               {action.icon}
             </button>
           </Tooltip>
         ))}
 
-        {/* Alignment dropdown button */}
+        {/* Alignment dropdown */}
         {updateBlock && (
           <>
             <div className="w-px h-5 bg-gray-200 mx-0.5" />
             <Tooltip label="Alinhamento" shortcut="">
               <button
-                className={`p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 ${alignOpen ? 'bg-gray-100' : ''}`}
-                onClick={() => { setAlignOpen(!alignOpen); setColorOpen(false); setFontOpen(false); setWeightOpen(false); setLinkOpen(false); setRefOpen(false); }}
+                className={`p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 ${toolbar.alignOpen ? 'bg-gray-100' : ''}`}
+                onClick={() => { toolbar.setAlignOpen(!toolbar.alignOpen); toolbar.closeSubmenusExcept('align'); }}
               >
-                {currentAlign === 'center' ? <AlignCenter size={16} className="text-gray-600" /> :
-                 currentAlign === 'right' ? <AlignRight size={16} className="text-gray-600" /> :
-                 currentAlign === 'justify' ? <AlignJustify size={16} className="text-gray-600" /> :
+                {toolbar.currentAlign === 'center' ? <AlignCenter size={16} className="text-gray-600" /> :
+                 toolbar.currentAlign === 'right' ? <AlignRight size={16} className="text-gray-600" /> :
+                 toolbar.currentAlign === 'justify' ? <AlignJustify size={16} className="text-gray-600" /> :
                  <AlignLeft size={16} className="text-gray-600" />}
                 <ChevronDown size={10} className="text-gray-400" />
               </button>
@@ -1089,19 +149,18 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
         <Tooltip label="Link externo" shortcut={`${modKey}+K`}>
           <button
             className={`p-1.5 rounded transition-colors ${
-              activeFormats.has('link')
+              toolbar.activeFormats.has('link')
                 ? 'bg-gray-200 text-gray-900'
-                : linkOpen ? 'bg-gray-100 text-gray-600' : 'hover:bg-gray-100 text-gray-600'
+                : toolbar.linkOpen ? 'bg-gray-100 text-gray-600' : 'hover:bg-gray-100 text-gray-600'
             }`}
             onClick={() => {
-              if (activeFormats.has('link') && currentLink) {
-                // If already on a link, open the menu to edit/remove
-                setLinkUrl(currentLink.href);
+              if (toolbar.activeFormats.has('link') && toolbar.currentLink) {
+                toolbar.setLinkUrl(toolbar.currentLink.href);
               } else {
-                setLinkUrl('');
+                toolbar.setLinkUrl('');
               }
-              setLinkOpen(!linkOpen);
-              setRefOpen(false); setColorOpen(false); setFontOpen(false); setAlignOpen(false);
+              toolbar.setLinkOpen(!toolbar.linkOpen);
+              toolbar.closeSubmenusExcept('link');
             }}
           >
             <Link size={16} />
@@ -1113,12 +172,12 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
           <Tooltip label="Referência interna" shortcut="">
             <button
               className={`p-1.5 rounded transition-colors ${
-                refOpen ? 'bg-gray-100 text-gray-600' : 'hover:bg-gray-100 text-gray-600'
+                toolbar.refOpen ? 'bg-gray-100 text-gray-600' : 'hover:bg-gray-100 text-gray-600'
               }`}
               onClick={() => {
-                setRefSearch('');
-                setRefOpen(!refOpen);
-                setLinkOpen(false); setColorOpen(false); setFontOpen(false); setAlignOpen(false);
+                toolbar.setRefSearch('');
+                toolbar.setRefOpen(!toolbar.refOpen);
+                toolbar.closeSubmenusExcept('ref');
               }}
             >
               <BookmarkIcon size={16} />
@@ -1127,312 +186,74 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
         )}
       </div>
 
-      {/* Color picker dropdown */}
-      {colorOpen && (
-        <div
-          ref={colorMenuRef}
-          className="fixed z-[51] bg-white shadow-xl border border-gray-200 rounded-lg p-3 w-[220px]"
-          style={{
-            left: colorMenuPos?.left ?? 0,
-            top: colorMenuPos?.top ?? 0,
-            visibility: colorMenuPos ? 'visible' : 'hidden',
-          }}
-          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
-        >
-          {/* Text colors */}
-          <div className="text-xs font-medium text-gray-500 mb-1.5">Cor do texto</div>
-          <div className="grid grid-cols-5 gap-1 mb-3">
-            {TEXT_COLORS.map(c => {
-              const isActive = c.value
-                ? normalizeColor(currentTextColor) === normalizeColor(c.value)
-                : !currentTextColor;
-              return (
-                <button
-                  key={c.name}
-                  className={`w-9 h-9 rounded-md flex items-center justify-center hover:bg-gray-50 border transition-colors ${
-                    isActive ? 'border-gray-400 bg-gray-100' : 'border-transparent hover:border-gray-300'
-                  }`}
-                  title={c.name}
-                  onClick={() => applyTextColor(c.value)}
-                >
-                  <span
-                    className="text-sm font-bold"
-                    style={{ color: c.preview }}
-                  >A</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Background colors */}
-          <div className="text-xs font-medium text-gray-500 mb-1.5">Cor de fundo</div>
-          <div className="grid grid-cols-5 gap-1">
-            {BG_COLORS.map(c => {
-              const isActive = c.value
-                ? normalizeColor(currentBgColor) === normalizeColor(c.value)
-                : !currentBgColor;
-              return (
-                <button
-                  key={c.name}
-                  className={`w-9 h-9 rounded-md transition-all ${
-                    isActive
-                      ? 'ring-2 ring-gray-400'
-                      : `hover:ring-2 hover:ring-gray-300 ${c.border ? 'ring-1 ring-gray-200' : ''}`
-                  }`}
-                  style={{ backgroundColor: c.preview }}
-                  title={c.name}
-                  onClick={() => applyBgColor(c.value)}
-                />
-              );
-            })}
-          </div>
-        </div>
+      {/* Submenus */}
+      {toolbar.colorOpen && (
+        <ColorPicker
+          menuRef={toolbar.colorMenuRef}
+          menuPos={toolbar.colorMenuPos}
+          currentTextColor={toolbar.currentTextColor}
+          currentBgColor={toolbar.currentBgColor}
+          onTextColor={toolbar.applyTextColor}
+          onBgColor={toolbar.applyBgColor}
+        />
       )}
 
-      {/* Font picker dropdown */}
-      {fontOpen && (
-        <div
-          ref={fontMenuRef}
-          className="fixed z-[51] bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-[200px] max-h-[280px] overflow-y-auto"
-          style={{
-            left: fontMenuPos?.left ?? 0,
-            top: fontMenuPos?.top ?? 0,
-            visibility: fontMenuPos ? 'visible' : 'hidden',
-          }}
-          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
-        >
-          {allFonts.length > 0 && (
-            <>
-              <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wider px-3 py-1">
-                Fontes do sistema
-              </div>
-              {allFonts.filter(f => !f.isCustom).map(font => (
-                <button
-                  key={font.family}
-                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between ${
-                    currentFont === font.family ? 'bg-gray-50 text-blue-600' : 'text-gray-700'
-                  }`}
-                  onClick={() => applyFont(font)}
-                >
-                  <span style={{ fontFamily: font.family }}>{font.name}</span>
-                  {currentFont === font.family && (
-                    <span className="text-blue-500 text-xs">&#10003;</span>
-                  )}
-                </button>
-              ))}
-            </>
-          )}
-          {customFonts.length > 0 && (
-            <>
-              <div className="border-t border-gray-100 my-1" />
-              <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wider px-3 py-1">
-                Fontes customizadas
-              </div>
-              {customFonts.map(font => (
-                <button
-                  key={font.family}
-                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between ${
-                    currentFont === font.family ? 'bg-gray-50 text-blue-600' : 'text-gray-700'
-                  }`}
-                  onClick={() => applyFont(font)}
-                >
-                  <span style={{ fontFamily: font.family }}>{font.name}</span>
-                  {currentFont === font.family && (
-                    <span className="text-blue-500 text-xs">&#10003;</span>
-                  )}
-                </button>
-              ))}
-            </>
-          )}
-        </div>
+      {toolbar.fontOpen && (
+        <FontPicker
+          menuRef={toolbar.fontMenuRef}
+          menuPos={toolbar.fontMenuPos}
+          allFonts={allFonts}
+          customFonts={customFonts}
+          currentFont={toolbar.currentFont}
+          onSelect={toolbar.applyFont}
+        />
       )}
 
-      {/* Weight picker dropdown */}
-      {weightOpen && availableWeights && availableWeights.length > 1 && (
-        <div
-          ref={weightMenuRef}
-          className="fixed z-[51] bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-[160px] max-h-[280px] overflow-y-auto"
-          style={{
-            left: weightMenuPos?.left ?? 0,
-            top: weightMenuPos?.top ?? 0,
-            visibility: weightMenuPos ? 'visible' : 'hidden',
-          }}
-          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
-        >
-          {availableWeights.map(w => (
-            <button
-              key={w}
-              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between ${
-                currentWeight === w ? 'bg-gray-50 text-blue-600' : 'text-gray-700'
-              }`}
-              onClick={() => applyWeight(w)}
-            >
-              <span style={{ fontFamily: currentFont, fontWeight: w }}>
-                {WEIGHT_LABELS[w] || w}
-              </span>
-              {currentWeight === w && (
-                <span className="text-blue-500 text-xs">&#10003;</span>
-              )}
-            </button>
-          ))}
-        </div>
+      {toolbar.weightOpen && availableWeights && availableWeights.length > 1 && (
+        <WeightPicker
+          menuRef={toolbar.weightMenuRef}
+          menuPos={toolbar.weightMenuPos}
+          availableWeights={availableWeights}
+          currentWeight={toolbar.currentWeight}
+          currentFont={toolbar.currentFont}
+          onSelect={toolbar.applyWeight}
+        />
       )}
 
-      {/* Alignment picker dropdown */}
-      {alignOpen && updateBlock && (
-        <div
-          ref={alignMenuRef}
-          className="fixed z-[51] bg-white shadow-xl border border-gray-200 rounded-lg p-1 flex items-center gap-0.5"
-          style={{
-            left: alignMenuPos?.left ?? 0,
-            top: alignMenuPos?.top ?? 0,
-            visibility: alignMenuPos ? 'visible' : 'hidden',
-          }}
-          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
-        >
-          {([
-            { align: 'left' as TextAlign, icon: <AlignLeft size={16} />, label: 'Esquerda' },
-            { align: 'center' as TextAlign, icon: <AlignCenter size={16} />, label: 'Centro' },
-            { align: 'right' as TextAlign, icon: <AlignRight size={16} />, label: 'Direita' },
-            { align: 'justify' as TextAlign, icon: <AlignJustify size={16} />, label: 'Justificar' },
-          ]).map(a => (
-            <button
-              key={a.align}
-              className={`p-1.5 rounded transition-colors ${
-                currentAlign === a.align
-                  ? 'bg-gray-200 text-gray-900'
-                  : 'hover:bg-gray-100 text-gray-600'
-              }`}
-              title={a.label}
-              onClick={() => {
-                restoreSelection();
-                const blockId = getSelectedBlockId();
-                if (blockId) {
-                  updateBlock(blockId, { align: a.align === 'left' ? undefined : a.align });
-                  setCurrentAlign(a.align);
-                }
-                setAlignOpen(false);
-              }}
-            >
-              {a.icon}
-            </button>
-          ))}
-        </div>
+      {toolbar.alignOpen && updateBlock && (
+        <AlignmentPicker
+          menuRef={toolbar.alignMenuRef}
+          menuPos={toolbar.alignMenuPos}
+          currentAlign={toolbar.currentAlign}
+          onSelect={toolbar.applyAlignment}
+        />
       )}
 
-      {/* Link input dropdown */}
-      {linkOpen && (
-        <div
-          ref={linkMenuRef}
-          className="fixed z-[51] bg-white shadow-xl border border-gray-200 rounded-lg p-3 w-[300px]"
-          style={{
-            left: linkMenuPos?.left ?? 0,
-            top: linkMenuPos?.top ?? 0,
-            visibility: linkMenuPos ? 'visible' : 'hidden',
-          }}
-          onMouseDown={e => { e.stopPropagation(); }}
-        >
-          <div className="text-xs font-medium text-gray-500 mb-2">Link externo</div>
-          <div className="flex gap-2">
-            <input
-              ref={linkInputRef}
-              type="url"
-              className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-              placeholder="https://exemplo.com"
-              value={linkUrl}
-              onChange={e => setLinkUrl(e.target.value)}
-              onKeyDown={e => {
-                e.stopPropagation();
-                if (e.key === 'Enter' && linkUrl.trim()) {
-                  e.preventDefault();
-                  applyLink(linkUrl.trim());
-                }
-                if (e.key === 'Escape') {
-                  setLinkOpen(false);
-                }
-              }}
-              onPaste={e => e.stopPropagation()}
-            />
-            <button
-              className="px-3 py-1.5 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:opacity-40 transition-colors"
-              disabled={!linkUrl.trim()}
-              onClick={() => applyLink(linkUrl.trim())}
-            >
-              <ExternalLink size={14} />
-            </button>
-          </div>
-          {activeFormats.has('link') && currentLink && (
-            <button
-              className="mt-2 flex items-center gap-1 text-xs text-red-500 hover:text-red-700 transition-colors"
-              onClick={removeLink}
-            >
-              <Unlink size={12} />
-              Remover link
-            </button>
-          )}
-        </div>
+      {toolbar.linkOpen && (
+        <LinkInput
+          menuRef={toolbar.linkMenuRef}
+          menuPos={toolbar.linkMenuPos}
+          inputRef={toolbar.linkInputRef}
+          linkUrl={toolbar.linkUrl}
+          onUrlChange={toolbar.setLinkUrl}
+          onApply={toolbar.applyLink}
+          onClose={() => toolbar.setLinkOpen(false)}
+          hasLink={toolbar.activeFormats.has('link') && !!toolbar.currentLink}
+          onRemoveLink={toolbar.removeLink}
+        />
       )}
 
-      {/* Internal reference dropdown */}
-      {refOpen && blocks && (
-        <div
-          ref={refMenuRef}
-          className="fixed z-[51] bg-white shadow-xl border border-gray-200 rounded-lg p-2 w-[280px] max-h-[300px] flex flex-col"
-          style={{
-            left: refMenuPos?.left ?? 0,
-            top: refMenuPos?.top ?? 0,
-            visibility: refMenuPos ? 'visible' : 'hidden',
-          }}
-          onMouseDown={e => { e.stopPropagation(); }}
-        >
-          <div className="text-xs font-medium text-gray-500 mb-2">Referência interna</div>
-          <div className="relative mb-2">
-            <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              ref={refInputRef}
-              type="text"
-              className="w-full border border-gray-300 rounded px-2 py-1.5 pl-7 text-sm outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
-              placeholder="Buscar bloco..."
-              value={refSearch}
-              onChange={e => setRefSearch(e.target.value)}
-              onKeyDown={e => {
-                e.stopPropagation();
-                if (e.key === 'Escape') setRefOpen(false);
-              }}
-              onPaste={e => e.stopPropagation()}
-            />
-          </div>
-          <div className="overflow-y-auto flex-1">
-            {blocks
-              .filter(b => {
-                if (b.type === 'divider' || b.type === 'table' || b.type === 'image') return false;
-                if (!b.content || b.content === '<br>') return false;
-                const text = b.content.replace(/<[^>]*>/g, '').trim();
-                if (!text) return false;
-                if (refSearch) return text.toLowerCase().includes(refSearch.toLowerCase());
-                return true;
-              })
-              .map(b => {
-                const text = b.content.replace(/<[^>]*>/g, '').trim();
-                const label = text.length > 50 ? text.slice(0, 50) + '...' : text;
-                const typeLabel = b.type === 'h1' ? 'H1' : b.type === 'h2' ? 'H2' : b.type === 'h3' ? 'H3' : '';
-                return (
-                  <button
-                    key={b.id}
-                    className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-purple-50 transition-colors flex items-center gap-2"
-                    onClick={() => applyRef(b.id)}
-                  >
-                    {typeLabel && (
-                      <span className="text-[10px] font-bold text-purple-500 bg-purple-100 px-1 rounded shrink-0">
-                        {typeLabel}
-                      </span>
-                    )}
-                    <span className="truncate text-gray-700">{label}</span>
-                  </button>
-                );
-              })}
-          </div>
-        </div>
+      {toolbar.refOpen && blocks && (
+        <RefPicker
+          menuRef={toolbar.refMenuRef}
+          menuPos={toolbar.refMenuPos}
+          inputRef={toolbar.refInputRef}
+          blocks={blocks}
+          refSearch={toolbar.refSearch}
+          onSearchChange={toolbar.setRefSearch}
+          onSelect={toolbar.applyRef}
+          onClose={() => toolbar.setRefOpen(false)}
+        />
       )}
     </>
   );

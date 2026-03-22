@@ -56,10 +56,22 @@ export interface DropTarget {
 
 export type ViewMode = 'continuous' | 'paginated';
 
+// Interface para data source plugável (local vs Yjs/Supabase)
+export interface EditorDataSourceInterface {
+  blocks: BlockData[];
+  setBlocks: (blocks: BlockData[]) => void;
+  undo: () => string[];
+  redo: () => string[];
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
 // Props do Editor principal (para reutilização)
 export interface NotionEditorProps {
   initialBlocks?: BlockData[];
   onChange?: (blocks: BlockData[]) => void;
   defaultViewMode?: ViewMode;
   title?: string;
+  /** Provide a custom data source (e.g. Yjs-backed) instead of the built-in local one */
+  dataSource?: EditorDataSourceInterface;
 }

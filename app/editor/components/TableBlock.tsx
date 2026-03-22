@@ -7,34 +7,7 @@ import {
 } from 'lucide-react';
 import { BlockData } from '../types';
 import { useTableBlock } from '../hooks/useTableBlock';
-
-// --- Color constants (Notion-like palette) ---
-
-const TEXT_COLORS = [
-  { name: 'Texto padrão', value: '', preview: '#37352F' },
-  { name: 'Texto cinza', value: '#9B9A97', preview: '#9B9A97' },
-  { name: 'Texto marrom', value: '#64473A', preview: '#64473A' },
-  { name: 'Texto laranja', value: '#D9730D', preview: '#D9730D' },
-  { name: 'Texto amarelo', value: '#DFAB01', preview: '#DFAB01' },
-  { name: 'Texto verde', value: '#0F7B6C', preview: '#0F7B6C' },
-  { name: 'Texto azul', value: '#0B6E99', preview: '#0B6E99' },
-  { name: 'Texto roxo', value: '#6940A5', preview: '#6940A5' },
-  { name: 'Texto rosa', value: '#AD1A72', preview: '#AD1A72' },
-  { name: 'Texto vermelho', value: '#E03E3E', preview: '#E03E3E' },
-];
-
-const BG_COLORS = [
-  { name: 'Fundo padrão', value: '', preview: '#FFFFFF' },
-  { name: 'Fundo cinza', value: '#F1F1EF', preview: '#F1F1EF' },
-  { name: 'Fundo marrom', value: '#F4EEEE', preview: '#F4EEEE' },
-  { name: 'Fundo laranja', value: '#FBECDD', preview: '#FBECDD' },
-  { name: 'Fundo amarelo', value: '#FBF3DB', preview: '#FBF3DB' },
-  { name: 'Fundo verde', value: '#EDF3EC', preview: '#EDF3EC' },
-  { name: 'Fundo azul', value: '#E7F3F8', preview: '#E7F3F8' },
-  { name: 'Fundo roxo', value: '#F6F3F9', preview: '#F6F3F9' },
-  { name: 'Fundo rosa', value: '#F9F0F5', preview: '#F9F0F5' },
-  { name: 'Fundo vermelho', value: '#FBE4E4', preview: '#FBE4E4' },
-];
+import { TABLE_TEXT_COLORS as TEXT_COLORS, TABLE_BG_COLORS as BG_COLORS } from '../constants';
 
 // --- Helpers ---
 

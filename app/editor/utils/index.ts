@@ -1,7 +1,10 @@
 import { BlockData, BlockType, TableData } from '../types';
 
-// Gera ID único
-export const generateId = () => Math.random().toString(36).substr(2, 9);
+// Gera ID único (crypto.randomUUID é mais seguro contra colisões em cenários multiplayer)
+export const generateId = (): string =>
+  typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : Math.random().toString(36).substr(2, 9);
 
 // Bloco inicial padrão
 export const createEmptyBlock = (): BlockData => ({
@@ -126,22 +129,3 @@ export const htmlToPlainText = (html: string): string => {
   return div.textContent || '';
 };
 
-// Copia texto para clipboard (compatível com iframes)
-export const copyToClipboard = (text: string) => {
-  const textArea = document.createElement('textarea');
-  textArea.value = text;
-  textArea.style.position = 'fixed';
-  textArea.style.left = '-9999px';
-  textArea.style.top = '0';
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
-
-  try {
-    document.execCommand('copy');
-  } catch (err) {
-    console.error('Falha ao copiar', err);
-  }
-
-  document.body.removeChild(textArea);
-};

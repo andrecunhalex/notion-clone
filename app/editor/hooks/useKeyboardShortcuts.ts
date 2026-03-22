@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { BlockData } from '../types';
 import { generateId } from '../utils';
 
@@ -14,34 +14,45 @@ interface UseKeyboardShortcutsProps {
 }
 
 export const useKeyboardShortcuts = ({
-  blocks,
-  setBlocks,
-  selectedIds,
-  setSelectedIds,
-  undo,
-  redo,
-  handleCopy,
-  handlePaste
+  blocks, setBlocks, selectedIds, setSelectedIds,
+  undo, redo, handleCopy, handlePaste,
 }: UseKeyboardShortcutsProps) => {
-  
+  // Use refs to avoid re-attaching listeners on every state change
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
+  const selectedIdsRef = useRef(selectedIds);
+  selectedIdsRef.current = selectedIds;
+  const setBlocksRef = useRef(setBlocks);
+  setBlocksRef.current = setBlocks;
+  const setSelectedIdsRef = useRef(setSelectedIds);
+  setSelectedIdsRef.current = setSelectedIds;
+  const undoRef = useRef(undo);
+  undoRef.current = undo;
+  const redoRef = useRef(redo);
+  redoRef.current = redo;
+  const handleCopyRef = useRef(handleCopy);
+  handleCopyRef.current = handleCopy;
+  const handlePasteRef = useRef(handlePaste);
+  handlePasteRef.current = handlePaste;
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const sIds = selectedIdsRef.current;
+      const b = blocksRef.current;
+
       // Escape — clear selection
-      if (e.key === 'Escape' && selectedIds.size > 0) {
+      if (e.key === 'Escape' && sIds.size > 0) {
         e.preventDefault();
-        setSelectedIds(new Set());
+        setSelectedIdsRef.current(new Set());
         return;
       }
 
       // Undo/Redo
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault();
-        // Flush current cell/block content before undo so state is up-to-date
         const active = document.activeElement as HTMLElement;
-        if (active?.isContentEditable) {
-          active.blur();
-        }
-        e.shiftKey ? redo() : undo();
+        if (active?.isContentEditable) active.blur();
+        e.shiftKey ? redoRef.current() : undoRef.current();
         return;
       }
 
@@ -51,57 +62,52 @@ export const useKeyboardShortcuts = ({
         const activeTag = activeElement.tagName;
         const isEditing = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeElement.isContentEditable;
 
-        if (selectedIds.size > 0 && (!isEditing || selectedIds.size > 1)) {
+        if (sIds.size > 0 && (!isEditing || sIds.size > 1)) {
           if (isEditing) activeElement.blur();
           e.preventDefault();
-          let newBlocks = blocks.filter(b => !selectedIds.has(b.id));
+          let newBlocks = b.filter(bl => !sIds.has(bl.id));
           if (newBlocks.length === 0) {
             newBlocks = [{ id: generateId(), type: 'text', content: '' }];
           }
-          setBlocks(newBlocks);
-          setSelectedIds(new Set());
+          setBlocksRef.current(newBlocks);
+          setSelectedIdsRef.current(new Set());
         }
       }
 
-      // Select All (Notion-like: first selects text in block, then all blocks)
+      // Select All
       if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
         const activeElement = document.activeElement as HTMLElement;
 
-        // If editing a non-empty block, first Ctrl+A selects text within the block
         if (activeElement?.isContentEditable) {
           const content = activeElement.textContent || '';
           if (content.trim() !== '') {
             const sel = window.getSelection();
             const selectedText = sel?.toString() || '';
-            // If not all text is selected yet, let browser select all text in this block
-            if (selectedText.length < content.length) {
-              return;
-            }
+            if (selectedText.length < content.length) return;
           }
         }
 
-        // Empty block, no focus, or all text already selected → select all blocks
         e.preventDefault();
-        if (activeElement instanceof HTMLElement) {
-          activeElement.blur();
-        }
-        setSelectedIds(new Set(blocks.map(b => b.id)));
+        if (activeElement instanceof HTMLElement) activeElement.blur();
+        setSelectedIdsRef.current(new Set(b.map(bl => bl.id)));
         return;
       }
 
-      // Copiar
-      if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selectedIds.size > 0) {
+      // Copy
+      if ((e.metaKey || e.ctrlKey) && e.key === 'c' && sIds.size > 0) {
         e.preventDefault();
-        handleCopy();
+        handleCopyRef.current();
       }
     };
 
+    const onPaste = (e: ClipboardEvent) => handlePasteRef.current(e);
+
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('paste', handlePaste);
+    window.addEventListener('paste', onPaste);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('paste', handlePaste);
+      window.removeEventListener('paste', onPaste);
     };
-  }, [blocks, selectedIds, undo, redo, setBlocks, setSelectedIds, handleCopy, handlePaste]);
+  }, []); // Empty deps — uses refs
 };

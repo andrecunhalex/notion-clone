@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { BlockData, ViewMode } from '../types';
 import { generateId, PAGE_CONTENT_HEIGHT, isListType } from '../utils';
 
@@ -17,6 +17,11 @@ export const usePagination = ({ blocks, setBlocks, viewMode }: UsePaginationProp
       return { ...prev, [id]: height };
     });
   }, []);
+
+  // Guard against infinite loops: skip if we just split
+  const lastSplitRef = useRef<string | null>(null);
+  const setBlocksRef = useRef(setBlocks);
+  setBlocksRef.current = setBlocks;
 
   // Quebra automática de página (Overflow Split)
   useEffect(() => {
@@ -54,6 +59,10 @@ export const usePagination = ({ blocks, setBlocks, viewMode }: UsePaginationProp
 
     if (splitAction) {
       const { id, splitPoint } = splitAction;
+
+      // Guard: don't split the same block twice in a row (prevents infinite loop)
+      if (lastSplitRef.current === id) return;
+
       const el = document.getElementById(`editable-${id}`);
       if (!el) return;
 
@@ -159,7 +168,8 @@ export const usePagination = ({ blocks, setBlocks, viewMode }: UsePaginationProp
 
         const newBlocks = [...blocks];
         newBlocks.splice(index, 1, newBlock1, newBlock2);
-        setBlocks(newBlocks);
+        lastSplitRef.current = id;
+        setBlocksRef.current(newBlocks);
 
         // Joga o foco para o novo bloco na próxima página (sem scroll)
         requestAnimationFrame(() => {
@@ -168,7 +178,7 @@ export const usePagination = ({ blocks, setBlocks, viewMode }: UsePaginationProp
         });
       }
     }
-  }, [blockHeights, blocks, viewMode, setBlocks]);
+  }, [blockHeights, blocks, viewMode]);
 
   return { blockHeights, handleHeightChange };
 };

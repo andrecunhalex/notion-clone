@@ -15,16 +15,19 @@ import {
 import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar } from './components';
 import { FontLoader } from './components/FontLoader';
 import { SYSTEM_FONTS } from './fonts';
+import { EditorProvider, EditorDataSource, useLocalDataSource } from './EditorProvider';
 
 const DEFAULT_BLOCK: BlockData = { id: 'initial-block', type: 'text', content: '' };
 
-export const NotionEditor: React.FC<NotionEditorProps> = ({
-  initialBlocks = [DEFAULT_BLOCK],
-  onChange,
-  defaultViewMode = 'paginated',
-  title = 'MiniNotion'
-}) => {
-  const [blocks, setBlocksRaw, undoRaw, redoRaw, canUndo, canRedo] = useHistory<BlockData[]>(initialBlocks);
+// Inner component that can use EditorProvider context if needed
+const NotionEditorInner: React.FC<{
+  dataSource: EditorDataSource;
+  onChange?: (blocks: BlockData[]) => void;
+  defaultViewMode: ViewMode;
+  title: string;
+}> = ({ dataSource, onChange, defaultViewMode, title }) => {
+  const { blocks, setBlocks: setBlocksRaw, undo: undoRaw, redo: redoRaw, canUndo, canRedo } = dataSource;
+
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
   const [documentFont, setDocumentFont] = useState<string>(SYSTEM_FONTS[0].family);
   const [slashMenu, setSlashMenu] = useState<SlashMenuState>({
@@ -39,17 +42,17 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     startSelection, clearSelection, didDragSelect
   } = useSelection({ blocks, containerRef, blockRefs });
 
-  // Ref to capture current selectedIds without stale closures
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
 
-  // Wrap setBlocks to save current selection in history before advancing
   const setBlocks = useCallback((newBlocks: BlockData[]) => {
-    setBlocksRaw(newBlocks, Array.from(selectedIdsRef.current));
+    // If the data source supports tracking selectedIds for history, update it
+    const fn = setBlocksRaw as any;
+    if (fn.__setSelectedIds) fn.__setSelectedIds(Array.from(selectedIdsRef.current));
+    setBlocksRaw(newBlocks);
     onChange?.(newBlocks);
   }, [setBlocksRaw, onChange]);
 
-  // Wrap undo/redo to also restore selection state
   const undo = useCallback(() => {
     const restoredIds = undoRaw();
     setSelectedIds(new Set(restoredIds));
@@ -80,8 +83,6 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     undo, redo, handleCopy, handlePaste
   });
 
-  // Único handler de mouse — o resto é via listeners nativos no document
-  // NOTE: não usa preventDefault() para não bloquear onClick em Windows
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.closest('.notion-block-content') || target.closest('.drag-handle')) return;
@@ -110,16 +111,13 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       .filter(Boolean) as HTMLElement[];
     if (blocksOnPage.length === 0) return;
 
-    // Check if click is below the last block on this page
     const lastBlockEl = blocksOnPage[blocksOnPage.length - 1];
     const lastRect = lastBlockEl.getBoundingClientRect();
     if (e.clientY > lastRect.bottom) {
-      // Focus last block of THIS page (not the whole document)
       const lastPageBlock = pageBlocks[pageBlocks.length - 1];
       const isLastPage = lastPageBlock.id === blocks[blocks.length - 1].id;
 
       if (isLastPage) {
-        // Last page: create a new block or focus existing empty one
         const lastBlock = blocks[blocks.length - 1];
         if (lastBlock && lastBlock.type === 'text' && isContentEmpty(lastBlock.content)) {
           focusBlock(lastBlock.id);
@@ -127,7 +125,6 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           addBlock(lastBlock?.id);
         }
       } else {
-        // Not the last page: just focus the last block on this page
         focusBlock(lastPageBlock.id);
       }
       return;
@@ -161,7 +158,6 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
     let cleanContent = '';
 
     if (blockEl) {
-      // Remove the '/' and any filter text from the DOM directly
       const walker = document.createTreeWalker(blockEl, NodeFilter.SHOW_TEXT);
       let lastSlashNode: Text | null = null;
       let lastSlashIdx = -1;
@@ -169,10 +165,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         const node = walker.currentNode as Text;
         const text = node.textContent || '';
         const idx = text.lastIndexOf('/');
-        if (idx !== -1) {
-          lastSlashNode = node;
-          lastSlashIdx = idx;
-        }
+        if (idx !== -1) { lastSlashNode = node; lastSlashIdx = idx; }
       }
       if (lastSlashNode && lastSlashIdx !== -1) {
         lastSlashNode.deleteData(lastSlashIdx, (lastSlashNode.textContent || '').length - lastSlashIdx);
@@ -204,16 +197,10 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       setSlashMenu(prev => ({ ...prev, isOpen: false }));
     } else if (type === 'table') {
       if (blockEl) blockEl.innerHTML = '';
-      updateBlock(slashMenu.blockId, {
-        type,
-        content: '',
-        tableData: createDefaultTableData(),
-      });
+      updateBlock(slashMenu.blockId, { type, content: '', tableData: createDefaultTableData() });
       setSlashMenu(prev => ({ ...prev, isOpen: false }));
       setTimeout(() => {
-        const firstCell = document.querySelector(
-          `[data-table-cell="${slashMenu.blockId}-0-0"]`
-        ) as HTMLElement;
+        const firstCell = document.querySelector(`[data-table-cell="${slashMenu.blockId}-0-0"]`) as HTMLElement;
         firstCell?.focus({ preventScroll: true });
       }, 50);
     } else {
@@ -222,12 +209,11 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
       setSlashMenu(prev => ({ ...prev, isOpen: false }));
       focusBlock(slashMenu.blockId);
     }
-  }, [slashMenu.blockId, blocks, updateBlock]);
+  }, [slashMenu.blockId, blocks, updateBlock, setBlocks]);
 
   const pages = getPaginatedBlocks(blocks, blockHeights, viewMode);
 
   return (
-    <FontLoader>
     <div
       className={`min-h-screen text-gray-800 selection:bg-blue-200 ${
         selectionBox ? 'select-none' : ''
@@ -312,6 +298,31 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
 
       {!slashMenu.isOpen && <FloatingToolbar documentFont={documentFont} blocks={blocks} updateBlock={updateBlock} />}
     </div>
+  );
+};
+
+// Main export — sets up FontLoader + data source
+export const NotionEditor: React.FC<NotionEditorProps> = ({
+  initialBlocks = [DEFAULT_BLOCK],
+  onChange,
+  defaultViewMode = 'paginated',
+  title = 'MiniNotion',
+  dataSource: externalDataSource,
+}) => {
+  // Use external data source if provided, otherwise use local
+  const localDataSource = useLocalDataSource(initialBlocks);
+  const dataSource = externalDataSource || localDataSource;
+
+  return (
+    <FontLoader>
+      <EditorProvider dataSource={dataSource}>
+        <NotionEditorInner
+          dataSource={dataSource}
+          onChange={onChange}
+          defaultViewMode={defaultViewMode}
+          title={title}
+        />
+      </EditorProvider>
     </FontLoader>
   );
 };

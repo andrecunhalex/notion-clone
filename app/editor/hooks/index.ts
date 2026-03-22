@@ -7,3 +7,4 @@ export { useClipboard } from './useClipboard';
 export { useKeyboardShortcuts } from './useKeyboardShortcuts';
 export { usePagination } from './usePagination';
 export { useTableBlock } from './useTableBlock';
+export { useFloatingToolbar } from './useFloatingToolbar';
