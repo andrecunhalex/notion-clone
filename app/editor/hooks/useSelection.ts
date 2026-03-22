@@ -11,50 +11,54 @@ export const useSelection = ({ blocks, containerRef, blockRefs }: UseSelectionPr
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
 
-  // Ref para ler blocks sempre atualizado sem re-registrar listeners
   const blocksRef = useRef(blocks);
   blocksRef.current = blocks;
 
-  // Estado mutável — zero closures stale
   const drag = useRef({ active: false, startX: 0, startY: 0, moved: false });
+  const rafId = useRef(0);
 
-  // Listeners nativos no document — bypassa React completamente
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const d = drag.current;
       if (!d.active || !containerRef.current) return;
 
       d.moved = true;
-      const rect = containerRef.current.getBoundingClientRect();
-      const curX = e.clientX - rect.left;
-      const curY = e.clientY - rect.top;
 
-      setSelectionBox({ startX: d.startX, startY: d.startY, curX, curY });
+      // Throttle with RAF — at most 1 layout calculation per frame
+      cancelAnimationFrame(rafId.current);
+      rafId.current = requestAnimationFrame(() => {
+        if (!containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const curX = e.clientX - rect.left;
+        const curY = e.clientY - rect.top;
 
-      const left = Math.min(d.startX, curX), right = Math.max(d.startX, curX);
-      const top = Math.min(d.startY, curY), bottom = Math.max(d.startY, curY);
+        setSelectionBox({ startX: d.startX, startY: d.startY, curX, curY });
 
-      const sel = new Set<string>();
-      blocksRef.current.forEach(block => {
-        const el = blockRefs.current?.[block.id];
-        if (!el) return;
-        const r = el.getBoundingClientRect();
-        const bL = r.left - rect.left, bT = r.top - rect.top;
-        if (left < bL + r.width && right > bL && top < bT + r.height && bottom > bT) {
-          sel.add(block.id);
-        }
+        const left = Math.min(d.startX, curX), right = Math.max(d.startX, curX);
+        const top = Math.min(d.startY, curY), bottom = Math.max(d.startY, curY);
+
+        const sel = new Set<string>();
+        blocksRef.current.forEach(block => {
+          const el = blockRefs.current?.[block.id];
+          if (!el) return;
+          const r = el.getBoundingClientRect();
+          const bL = r.left - rect.left, bT = r.top - rect.top;
+          if (left < bL + r.width && right > bL && top < bT + r.height && bottom > bT) {
+            sel.add(block.id);
+          }
+        });
+        setSelectedIds(sel);
       });
-      setSelectedIds(sel);
     };
 
     const onUp = () => {
       if (drag.current.active) {
+        cancelAnimationFrame(rafId.current);
         drag.current.active = false;
         setSelectionBox(null);
       }
     };
 
-    // Clear selection on any click (except drag handle, to allow dragging selected blocks)
     const onDocMouseDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target.closest('.drag-handle')) {
@@ -66,6 +70,7 @@ export const useSelection = ({ blocks, containerRef, blockRefs }: UseSelectionPr
     document.addEventListener('mouseup', onUp);
     document.addEventListener('mousedown', onDocMouseDown);
     return () => {
+      cancelAnimationFrame(rafId.current);
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       document.removeEventListener('mousedown', onDocMouseDown);

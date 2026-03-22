@@ -1,8 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useCallback, useRef } from 'react';
-import { BlockData, BlockType } from './types';
-import { generateId, focusBlock } from './utils';
+import React, { createContext, useContext, useCallback, useRef, useMemo } from 'react';
+import { BlockData } from './types';
 import { useHistory } from './hooks/useHistory';
 
 // ---------------------------------------------------------------------------
@@ -10,37 +9,38 @@ import { useHistory } from './hooks/useHistory';
 // ---------------------------------------------------------------------------
 
 export interface EditorDataSource {
-  /** Current blocks state */
   blocks: BlockData[];
-  /** Replace the entire blocks array (for local mode) */
   setBlocks: (blocks: BlockData[]) => void;
-  /** Undo last change — returns restored selectedIds */
   undo: () => string[];
-  /** Redo last undone change — returns restored selectedIds */
   redo: () => string[];
   canUndo: boolean;
   canRedo: boolean;
+  trackSelectedIds?: (ids: string[]) => void;
 }
 
 // ---------------------------------------------------------------------------
 // Local data source (default — useState + useHistory)
 // ---------------------------------------------------------------------------
 
-export function useLocalDataSource(initialBlocks: BlockData[]): EditorDataSource {
-  const [blocks, setBlocksRaw, undoRaw, redoRaw, canUndo, canRedo] = useHistory<BlockData[]>(initialBlocks);
+export function useLocalDataSource(
+  initialBlocks: BlockData[],
+  debounceMs?: number,
+): EditorDataSource {
+  const [blocks, setBlocksRaw, undoRaw, redoRaw, canUndo, canRedo] = useHistory<BlockData[]>(initialBlocks, debounceMs);
 
   const selectedIdsRef = useRef<string[]>([]);
+
+  const trackSelectedIds = useCallback((ids: string[]) => {
+    selectedIdsRef.current = ids;
+  }, []);
 
   const setBlocks = useCallback((newBlocks: BlockData[]) => {
     setBlocksRaw(newBlocks, selectedIdsRef.current);
   }, [setBlocksRaw]);
 
-  // Expose a way to update selectedIds for history tracking
-  (setBlocks as any).__setSelectedIds = (ids: string[]) => {
-    selectedIdsRef.current = ids;
-  };
-
-  return { blocks, setBlocks, undo: undoRaw, redo: redoRaw, canUndo, canRedo };
+  return useMemo(() => ({
+    blocks, setBlocks, undo: undoRaw, redo: redoRaw, canUndo, canRedo, trackSelectedIds,
+  }), [blocks, setBlocks, undoRaw, redoRaw, canUndo, canRedo, trackSelectedIds]);
 }
 
 // ---------------------------------------------------------------------------
@@ -69,8 +69,9 @@ interface EditorProviderProps {
 }
 
 export const EditorProvider: React.FC<EditorProviderProps> = ({ dataSource, children }) => {
+  const value = useMemo(() => ({ dataSource }), [dataSource]);
   return (
-    <EditorContext.Provider value={{ dataSource }}>
+    <EditorContext.Provider value={value}>
       {children}
     </EditorContext.Provider>
   );

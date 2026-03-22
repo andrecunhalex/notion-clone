@@ -312,39 +312,30 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     setPos({ left, top });
   }, []);
 
+  // Single consolidated effect for all submenu positioning
   useLayoutEffect(() => {
     if (colorOpen) positionSubmenu(colorMenuRef, setColorMenuPos);
     else setColorMenuPos(null);
-  }, [colorOpen, position, positionSubmenu]);
 
-  useLayoutEffect(() => {
     if (fontOpen) positionSubmenu(fontMenuRef, setFontMenuPos);
     else setFontMenuPos(null);
-  }, [fontOpen, position, positionSubmenu]);
 
-  useLayoutEffect(() => {
     if (weightOpen) positionSubmenu(weightMenuRef, setWeightMenuPos);
     else setWeightMenuPos(null);
-  }, [weightOpen, position, positionSubmenu]);
 
-  useLayoutEffect(() => {
     if (alignOpen) positionSubmenu(alignMenuRef, setAlignMenuPos, true);
     else setAlignMenuPos(null);
-  }, [alignOpen, position, positionSubmenu]);
 
-  useLayoutEffect(() => {
     if (linkOpen) {
       positionSubmenu(linkMenuRef, setLinkMenuPos);
       setTimeout(() => linkInputRef.current?.focus(), 0);
     } else setLinkMenuPos(null);
-  }, [linkOpen, position, positionSubmenu]);
 
-  useLayoutEffect(() => {
     if (refOpen) {
       positionSubmenu(refMenuRef, setRefMenuPos);
       setTimeout(() => refInputRef.current?.focus(), 0);
     } else setRefMenuPos(null);
-  }, [refOpen, position, positionSubmenu]);
+  }, [colorOpen, fontOpen, weightOpen, alignOpen, linkOpen, refOpen, position, positionSubmenu]);
 
   // --- Format actions ---
 

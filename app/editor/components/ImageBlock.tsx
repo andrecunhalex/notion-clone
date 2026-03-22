@@ -90,36 +90,45 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
     setIsResizing(true);
   }, [imageData.width]);
 
+  // Store alignment in a ref so the resize effect doesn't re-register on alignment change
+  const alignmentRef = useRef(imageData.alignment);
+  alignmentRef.current = imageData.alignment;
+  const updateRef = useRef(update);
+  updateRef.current = update;
+
   useEffect(() => {
     if (!isResizing) return;
 
-    // Prevent text selection and scroll jumps during resize
     document.body.style.userSelect = 'none';
     document.body.style.webkitUserSelect = 'none';
 
+    let rafId = 0;
     const handleMouseMove = (e: MouseEvent) => {
-      if (!resizeStartRef.current || !containerRef.current) return;
-      e.preventDefault();
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        if (!resizeStartRef.current || !containerRef.current) return;
+        const { startX, startWidth, side } = resizeStartRef.current;
+        const containerWidth = containerRef.current.offsetWidth;
+        const deltaX = e.clientX - startX;
+        const alignment = alignmentRef.current;
 
-      const { startX, startWidth, side } = resizeStartRef.current;
-      const containerWidth = containerRef.current.offsetWidth;
-      const deltaX = e.clientX - startX;
+        let newPixelWidth: number;
+        if (alignment === 'center') {
+          const effectiveDelta = side === 'right' ? deltaX : -deltaX;
+          newPixelWidth = startWidth + effectiveDelta * 2;
+        } else if (alignment === 'left') {
+          newPixelWidth = side === 'right' ? startWidth + deltaX : startWidth - deltaX;
+        } else {
+          newPixelWidth = side === 'left' ? startWidth - deltaX : startWidth + deltaX;
+        }
 
-      let newPixelWidth: number;
-      if (imageData.alignment === 'center') {
-        const effectiveDelta = side === 'right' ? deltaX : -deltaX;
-        newPixelWidth = startWidth + effectiveDelta * 2;
-      } else if (imageData.alignment === 'left') {
-        newPixelWidth = side === 'right' ? startWidth + deltaX : startWidth - deltaX;
-      } else {
-        newPixelWidth = side === 'left' ? startWidth - deltaX : startWidth + deltaX;
-      }
-
-      const newPercent = Math.max(10, Math.min(100, (newPixelWidth / containerWidth) * 100));
-      update({ width: Math.round(newPercent) });
+        const newPercent = Math.max(10, Math.min(100, (newPixelWidth / containerWidth) * 100));
+        updateRef.current({ width: Math.round(newPercent) });
+      });
     };
 
     const handleMouseUp = () => {
+      cancelAnimationFrame(rafId);
       setIsResizing(false);
       resizeStartRef.current = null;
       document.body.style.userSelect = '';
@@ -129,12 +138,13 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     return () => {
+      cancelAnimationFrame(rafId);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       document.body.style.userSelect = '';
       document.body.style.webkitUserSelect = '';
     };
-  }, [isResizing, imageData.alignment, update]);
+  }, [isResizing]);
 
   const alignmentStyles: Record<ImageAlignment, string> = {
     left: 'justify-start',

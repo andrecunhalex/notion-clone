@@ -56,8 +56,10 @@ export const PAGE_CONTENT_HEIGHT = 950; // Altura útil da página
 export const getPaginatedBlocks = (
   blocks: BlockData[],
   blockHeights: Record<string, number>,
-  viewMode: 'continuous' | 'paginated'
+  viewMode: 'continuous' | 'paginated',
+  pageContentHeight?: number
 ): BlockData[][] => {
+  const PAGE_H = pageContentHeight || PAGE_CONTENT_HEIGHT;
   if (viewMode === 'continuous') return [blocks];
 
   const pages: BlockData[][] = [];
@@ -68,7 +70,7 @@ export const getPaginatedBlocks = (
     const h = blockHeights[block.id] || 24;
 
     // Se o bloco sozinho é maior que a página, coloca numa página própria
-    if (h >= PAGE_CONTENT_HEIGHT) {
+    if (h >= PAGE_H) {
       if (currentPage.length > 0) {
         pages.push(currentPage);
         currentPage = [];
@@ -80,7 +82,7 @@ export const getPaginatedBlocks = (
     }
 
     // Se adicionar esse bloco estoura a página, começa nova página
-    if (currentH + h > PAGE_CONTENT_HEIGHT && currentPage.length > 0) {
+    if (currentH + h > PAGE_H && currentPage.length > 0) {
       pages.push(currentPage);
       currentPage = [];
       currentH = 0;

@@ -1,39 +1,9 @@
 @import "tailwindcss";
+@import "./editor/editor.css";
 
-/* Notion-like typography */
+/* App-level typography */
 body {
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI",
     Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
   -webkit-font-smoothing: auto;
-}
-
-[contenteditable] {
-  line-height: 1.5;
-  word-break: break-word;
-}
-
-/* Editable blocks need relative positioning for the placeholder */
-.editable-block {
-  position: relative;
-  min-height: 24px;
-}
-
-/* Links inside editable blocks — cursor only, styling is inline so user can change it */
-.editable-block a[href] {
-  cursor: pointer;
-}
-
-/* Smooth highlight transition for reference scroll */
-[data-block-id] {
-  transition: background-color 0.3s ease;
-}
-
-/* Placeholder only when focused and content is empty — absolutely positioned to avoid layout shift */
-.editable-block.is-empty:focus::before {
-  content: attr(data-placeholder);
-  color: #d1d5db;
-  pointer-events: none;
-  position: absolute;
-  top: 0;
-  left: 0;
 }

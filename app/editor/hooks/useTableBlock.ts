@@ -30,7 +30,7 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
 
   const resizeStartX = useRef(0);
   const resizeStartWidths = useRef<number[]>([]);
-  const lastSyncedData = useRef<string>('');
+  const lastSyncedData = useRef<TableCellData[][] | null>(null);
   const hideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectionAnchor = useRef<CellCoord | null>(null);
   const selectionCursor = useRef<CellCoord | null>(null);
@@ -116,7 +116,7 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
       const el = document.querySelector(`[data-table-cell="${block.id}-${key}"]`) as HTMLElement;
       if (el) el.innerHTML = '';
     });
-    lastSyncedData.current = JSON.stringify(newRows);
+    lastSyncedData.current = newRows;
     updateTableData({ rows: newRows });
   }, [rows, block.id, updateTableData]);
 
@@ -131,7 +131,7 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
         return updated;
       })
     );
-    lastSyncedData.current = JSON.stringify(newRows);
+    lastSyncedData.current = newRows;
     updateTableData({ rows: newRows });
   }, [rows, updateTableData]);
 
@@ -267,7 +267,7 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
         ri === rowIdx && ci === colIdx ? { ...cell, content } : cell
       )
     );
-    lastSyncedData.current = JSON.stringify(newRows);
+    lastSyncedData.current = newRows;
     updateTableData({ rows: newRows });
   }, [rows, updateTableData]);
 
@@ -417,26 +417,30 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
 
   useEffect(() => {
     if (resizingCol === null) return;
+    let rafId = 0;
     const onMove = (e: MouseEvent) => {
-      if (!tableRef.current) return;
-      const tw = tableRef.current.offsetWidth;
-      const d = ((e.clientX - resizeStartX.current) / tw) * 100;
-      const w = [...resizeStartWidths.current];
-      const nL = w[resizingCol] + d, nR = w[resizingCol + 1] - d;
-      if (nL >= 5 && nR >= 5) { w[resizingCol] = nL; w[resizingCol + 1] = nR; updateTableData({ columnWidths: w }); }
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        if (!tableRef.current) return;
+        const tw = tableRef.current.offsetWidth;
+        const d = ((e.clientX - resizeStartX.current) / tw) * 100;
+        const w = [...resizeStartWidths.current];
+        const nL = w[resizingCol] + d, nR = w[resizingCol + 1] - d;
+        if (nL >= 5 && nR >= 5) { w[resizingCol] = nL; w[resizingCol + 1] = nR; updateTableData({ columnWidths: w }); }
+      });
     };
-    const onUp = () => setResizingCol(null);
+    const onUp = () => { cancelAnimationFrame(rafId); setResizingCol(null); };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
-    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    return () => { cancelAnimationFrame(rafId); document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, [resizingCol, updateTableData]);
 
-  // --- DOM sync ---
+  // --- DOM sync (external changes only — undo/redo, paste) ---
 
   useEffect(() => {
-    const key = JSON.stringify(rows);
-    if (lastSyncedData.current === key) return;
-    lastSyncedData.current = key;
+    // Skip sync when we just saved from input (lastSyncedData matches current)
+    if (lastSyncedData.current === rows) return;
+    lastSyncedData.current = rows;
     rows.forEach((row, ri) => {
       row.forEach((cell, ci) => {
         const el = document.querySelector(`[data-table-cell="${block.id}-${ri}-${ci}"]`) as HTMLElement;

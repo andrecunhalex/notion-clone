@@ -64,6 +64,18 @@ export interface EditorDataSourceInterface {
   redo: () => string[];
   canUndo: boolean;
   canRedo: boolean;
+  /** Track selected IDs for history restoration (optional) */
+  trackSelectedIds?: (ids: string[]) => void;
+}
+
+// Editor configuration for customizable values
+export interface EditorConfig {
+  /** Height in px of the usable page area in paginated mode (default: 950) */
+  pageContentHeight?: number;
+  /** History debounce window in ms (default: 500) */
+  historyDebounceMs?: number;
+  /** Custom font fetcher — replaces the default /api/fonts call */
+  fetchFonts?: () => Promise<import('../fonts').FontFamily[]>;
 }
 
 // Props do Editor principal (para reutilização)
@@ -74,4 +86,6 @@ export interface NotionEditorProps {
   title?: string;
   /** Provide a custom data source (e.g. Yjs-backed) instead of the built-in local one */
   dataSource?: EditorDataSourceInterface;
+  /** Editor configuration for customizable values */
+  config?: EditorConfig;
 }

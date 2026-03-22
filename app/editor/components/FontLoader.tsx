@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import {
   FontEntry,
   FontFamily,
@@ -22,45 +22,54 @@ const FontContext = createContext<FontContextValue>({
 
 export const useFonts = () => useContext(FontContext);
 
-/**
- * Busca fontes de public/fonts/, injeta @font-face e
- * disponibiliza a lista via context para os seletores.
- */
-export const FontLoader: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+interface FontLoaderProps {
+  children: React.ReactNode;
+  /** Custom font fetcher — replaces the default /api/fonts call */
+  fetchFonts?: () => Promise<FontFamily[]>;
+}
+
+export const FontLoader: React.FC<FontLoaderProps> = ({ children, fetchFonts }) => {
   const [customFonts, setCustomFonts] = useState<FontEntry[]>([]);
+
+  const fetcher = fetchFonts || fetchFontFamilies;
 
   useEffect(() => {
     let cancelled = false;
 
-    fetchFontFamilies().then((families: FontFamily[]) => {
-      if (cancelled) return;
+    fetcher()
+      .then((families: FontFamily[]) => {
+        if (cancelled) return;
 
-      // Inject @font-face CSS
-      const css = generateFontFaceCSS(families);
-      if (css) {
-        const id = 'editor-custom-fonts';
-        let style = document.getElementById(id) as HTMLStyleElement | null;
-        if (!style) {
-          style = document.createElement('style');
-          style.id = id;
-          document.head.appendChild(style);
+        const css = generateFontFaceCSS(families);
+        if (css) {
+          const id = 'editor-custom-fonts';
+          let style = document.getElementById(id) as HTMLStyleElement | null;
+          if (!style) {
+            style = document.createElement('style');
+            style.id = id;
+            document.head.appendChild(style);
+          }
+          style.textContent = css;
         }
-        style.textContent = css;
-      }
 
-      setCustomFonts(fontFamiliesToEntries(families));
-    });
+        setCustomFonts(fontFamiliesToEntries(families));
+      })
+      .catch(() => {
+        // Font loading is optional — silently degrade to system fonts only
+      });
 
     return () => {
       cancelled = true;
       document.getElementById('editor-custom-fonts')?.remove();
     };
-  }, []);
+  }, [fetcher]);
 
-  const allFonts = [...SYSTEM_FONTS, ...customFonts];
+  const allFonts = useMemo(() => [...SYSTEM_FONTS, ...customFonts], [customFonts]);
+
+  const value = useMemo(() => ({ allFonts, customFonts }), [allFonts, customFonts]);
 
   return (
-    <FontContext.Provider value={{ allFonts, customFonts }}>
+    <FontContext.Provider value={value}>
       {children}
     </FontContext.Provider>
   );

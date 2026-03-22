@@ -1,0 +1,33 @@
+/* =============================================================================
+ * Editor Styles
+ * =============================================================================
+ * These styles are required when using the editor as a library.
+ * Import this file in your app alongside Tailwind CSS.
+ * =========================================================================== */
+
+[contenteditable] {
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.editable-block {
+  position: relative;
+  min-height: 24px;
+}
+
+.editable-block a[href] {
+  cursor: pointer;
+}
+
+[data-block-id] {
+  transition: background-color 0.3s ease;
+}
+
+.editable-block.is-empty:focus::before {
+  content: attr(data-placeholder);
+  color: #d1d5db;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+}

@@ -59,14 +59,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             onClick={() => setFontOpen(!fontOpen)}
             title="Fonte do documento"
           >
-            <span className="max-w-[100px] truncate" style={{ fontFamily: documentFont || undefined }}>
+            <span className="max-w-25 truncate" style={{ fontFamily: documentFont || undefined }}>
               {currentFontName}
             </span>
             <ChevronDown size={12} />
           </button>
 
           {fontOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-[200px] max-h-[300px] overflow-y-auto z-50">
+            <div className="absolute right-0 top-full mt-1 bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-50 max-h-75 overflow-y-auto z-50">
               {allFonts.filter(f => !f.isCustom).length > 0 && (
                 <>
                   <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wider px-3 py-1">

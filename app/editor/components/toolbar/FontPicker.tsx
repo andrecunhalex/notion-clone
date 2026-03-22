@@ -17,7 +17,7 @@ export const FontPicker: React.FC<FontPickerProps> = ({
 }) => (
   <div
     ref={menuRef}
-    className="fixed z-[51] bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-[200px] max-h-[280px] overflow-y-auto"
+    className="fixed z-51 bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-55 max-h-70 overflow-y-auto"
     style={{
       left: menuPos?.left ?? 0,
       top: menuPos?.top ?? 0,

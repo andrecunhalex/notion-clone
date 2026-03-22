@@ -6,9 +6,11 @@ interface UsePaginationProps {
   blocks: BlockData[];
   setBlocks: (blocks: BlockData[]) => void;
   viewMode: ViewMode;
+  pageContentHeight?: number;
 }
 
-export const usePagination = ({ blocks, setBlocks, viewMode }: UsePaginationProps) => {
+export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }: UsePaginationProps) => {
+  const PAGE_H = pageContentHeight || PAGE_CONTENT_HEIGHT;
   const [blockHeights, setBlockHeights] = useState<Record<string, number>>({});
 
   const handleHeightChange = useCallback((id: string, height: number) => {
@@ -37,13 +39,13 @@ export const usePagination = ({ blocks, setBlocks, viewMode }: UsePaginationProp
       const canSplit = block.type === 'text' || isListType(block.type);
 
       // Bloco maior que página inteira - tenta quebrar se for texto/lista (não tabela)
-      if (h >= PAGE_CONTENT_HEIGHT && canSplit) {
-        splitAction = { id: block.id, splitPoint: PAGE_CONTENT_HEIGHT - 50 };
+      if (h >= PAGE_H && canSplit) {
+        splitAction = { id: block.id, splitPoint: PAGE_H - 50 };
         break;
       }
 
-      if (currentH + h > PAGE_CONTENT_HEIGHT) {
-        const availableH = PAGE_CONTENT_HEIGHT - currentH;
+      if (currentH + h > PAGE_H) {
+        const availableH = PAGE_H - currentH;
 
         // Quebra se for texto/lista, houver espaço (>50px) e o bloco for maior que o espaço
         if (canSplit && availableH > 50 && h > availableH) {

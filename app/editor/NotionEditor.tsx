@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
-import { BlockData, SlashMenuState, ViewMode, NotionEditorProps } from './types';
-import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty } from './utils';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
+import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig } from './types';
+import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty, getListNumber } from './utils';
 import {
-  useHistory,
   useBlockManager,
   useSelection,
   useDragAndDrop,
@@ -19,13 +18,13 @@ import { EditorProvider, EditorDataSource, useLocalDataSource } from './EditorPr
 
 const DEFAULT_BLOCK: BlockData = { id: 'initial-block', type: 'text', content: '' };
 
-// Inner component that can use EditorProvider context if needed
 const NotionEditorInner: React.FC<{
   dataSource: EditorDataSource;
   onChange?: (blocks: BlockData[]) => void;
   defaultViewMode: ViewMode;
   title: string;
-}> = ({ dataSource, onChange, defaultViewMode, title }) => {
+  config: EditorConfig;
+}> = ({ dataSource, onChange, defaultViewMode, title, config }) => {
   const { blocks, setBlocks: setBlocksRaw, undo: undoRaw, redo: redoRaw, canUndo, canRedo } = dataSource;
 
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
@@ -42,16 +41,15 @@ const NotionEditorInner: React.FC<{
     startSelection, clearSelection, didDragSelect
   } = useSelection({ blocks, containerRef, blockRefs });
 
+  // Track selected IDs for history through the proper interface
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
 
   const setBlocks = useCallback((newBlocks: BlockData[]) => {
-    // If the data source supports tracking selectedIds for history, update it
-    const fn = setBlocksRaw as any;
-    if (fn.__setSelectedIds) fn.__setSelectedIds(Array.from(selectedIdsRef.current));
+    dataSource.trackSelectedIds?.(Array.from(selectedIdsRef.current));
     setBlocksRaw(newBlocks);
     onChange?.(newBlocks);
-  }, [setBlocksRaw, onChange]);
+  }, [setBlocksRaw, onChange, dataSource]);
 
   const undo = useCallback(() => {
     const restoredIds = undoRaw();
@@ -63,7 +61,7 @@ const NotionEditorInner: React.FC<{
     setSelectedIds(new Set(restoredIds));
   }, [redoRaw, setSelectedIds]);
 
-  const { blockHeights, handleHeightChange } = usePagination({ blocks, setBlocks, viewMode });
+  const { blockHeights, handleHeightChange } = usePagination({ blocks, setBlocks, viewMode, pageContentHeight: config.pageContentHeight });
 
   const { updateBlock, addBlock, addBlockBefore, addBlockWithContent, addListBlock, removeBlock, mergeWithPrevious, deleteSelectedBlocks, moveBlocks } = useBlockManager({
     blocks, setBlocks
@@ -211,7 +209,20 @@ const NotionEditorInner: React.FC<{
     }
   }, [slashMenu.blockId, blocks, updateBlock, setBlocks]);
 
-  const pages = getPaginatedBlocks(blocks, blockHeights, viewMode);
+  const pages = getPaginatedBlocks(blocks, blockHeights, viewMode, config.pageContentHeight);
+
+  // Pre-compute list numbers for all blocks to avoid passing the entire blocks array to Block
+  const listNumbers = useMemo(() => {
+    const map: Record<string, number> = {};
+    blocks.forEach((block, idx) => {
+      if (block.type === 'numbered_list') {
+        map[block.id] = getListNumber(block, blocks, idx);
+      }
+    });
+    return map;
+  }, [blocks]);
+
+  const lastBlockId = blocks[blocks.length - 1]?.id;
 
   return (
     <div
@@ -259,8 +270,8 @@ const NotionEditorInner: React.FC<{
                 key={block.id}
                 index={index}
                 block={block}
-                blocks={blocks}
-                globalIndex={blocks.findIndex(b => b.id === block.id)}
+                listNumber={listNumbers[block.id] || 1}
+                isLastBlock={block.id === lastBlockId}
                 isSelected={selectedIds.has(block.id)}
                 updateBlock={updateBlock}
                 addBlock={addBlock}
@@ -308,19 +319,20 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   defaultViewMode = 'paginated',
   title = 'MiniNotion',
   dataSource: externalDataSource,
+  config = {},
 }) => {
-  // Use external data source if provided, otherwise use local
-  const localDataSource = useLocalDataSource(initialBlocks);
+  const localDataSource = useLocalDataSource(initialBlocks, config.historyDebounceMs);
   const dataSource = externalDataSource || localDataSource;
 
   return (
-    <FontLoader>
+    <FontLoader fetchFonts={config.fetchFonts}>
       <EditorProvider dataSource={dataSource}>
         <NotionEditorInner
           dataSource={dataSource}
           onChange={onChange}
           defaultViewMode={defaultViewMode}
           title={title}
+          config={config}
         />
       </EditorProvider>
     </FontLoader>

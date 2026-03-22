@@ -26,6 +26,7 @@ export type {
   ImageAlignment,
   TextAlign,
   EditorDataSourceInterface,
+  EditorConfig,
 } from './types';
 
 // Utils úteis para extensão

@@ -14,10 +14,9 @@ type UseHistoryReturn<T> = [
   boolean                                         // canRedo
 ];
 
-// Debounce window: rapid edits within this interval update the same history entry
-const DEBOUNCE_MS = 500;
+const DEFAULT_DEBOUNCE_MS = 500;
 
-export const useHistory = <T>(initialState: T): UseHistoryReturn<T> => {
+export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBOUNCE_MS): UseHistoryReturn<T> => {
   const [state, setState] = useState<T>(initialState);
   const [history, setHistory] = useState<HistoryEntry<T>[]>([
     { state: initialState, selectedIds: [] }
@@ -40,7 +39,7 @@ export const useHistory = <T>(initialState: T): UseHistoryReturn<T> => {
     lastEditTime.current = now;
 
     // If within debounce window, update the current entry in-place instead of pushing new
-    if (isDebouncing.current && timeSinceLastEdit < DEBOUNCE_MS) {
+    if (isDebouncing.current && timeSinceLastEdit < debounceMs) {
       setHistory(prev => {
         const p = pointerRef.current;
         const updated = [...prev];

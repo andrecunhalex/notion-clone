@@ -1,6 +1,7 @@
 // Exporta todos os hooks
 export { useHistory } from './useHistory';
 export { useBlockManager } from './useBlockManager';
+export { useBlockKeyboard, findEditable, focusEditable } from './useBlockKeyboard';
 export { useSelection } from './useSelection';
 export { useDragAndDrop } from './useDragAndDrop';
 export { useClipboard } from './useClipboard';

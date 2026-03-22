@@ -66,7 +66,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
         {/* Font button */}
         <Tooltip label="Fonte" shortcut="">
           <button
-            className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 max-w-[100px] ${toolbar.fontOpen ? 'bg-gray-100' : ''}`}
+            className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 max-w-25 ${toolbar.fontOpen ? 'bg-gray-100' : ''}`}
             onClick={() => { toolbar.setFontOpen(!toolbar.fontOpen); toolbar.closeSubmenusExcept('font'); }}
           >
             <Type size={14} className="shrink-0 relative -top-[0.25px]" />
