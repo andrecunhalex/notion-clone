@@ -251,8 +251,8 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
         ref={containerRef}
         className={`mx-auto relative cursor-text transition-all duration-300 ${
           viewMode === 'paginated'
-            ? 'pt-8'
-            : 'max-w-3xl mt-12 px-12 pb-64 min-h-[80vh]'
+            ? 'pt-8 overflow-x-hidden'
+            : 'max-w-3xl mt-12 px-12 pb-64 min-h-[80vh] overflow-x-hidden'
         }`}
         style={{ fontFamily: documentFont || undefined }}
         onDragOver={handleContainerDragOver}
@@ -263,7 +263,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
             key={pageIndex}
             className={
               viewMode === 'paginated'
-                ? 'min-h-[297mm] bg-white shadow-lg px-[20mm] py-[15mm] mb-8 mx-auto max-w-[210mm]'
+                ? 'min-h-[297mm] bg-white shadow-lg px-[20mm] py-[15mm] mb-8 mx-auto max-w-[210mm] overflow-x-hidden'
                 : ''
             }
             onClick={e => handlePageClick(e, pageBlocks)}

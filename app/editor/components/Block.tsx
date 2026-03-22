@@ -130,6 +130,81 @@ export const Block: React.FC<BlockProps> = ({
   const isList = isListType(block.type);
   const indent = block.indent ?? 0;
 
+  // --- Helpers for cross-block navigation ---
+  const findEditable = (
+    startEl: HTMLElement | null,
+    direction: 'next' | 'prev'
+  ): HTMLElement | null => {
+    let el = startEl;
+    while (el) {
+      const selector = '[contenteditable]';
+      const found = direction === 'prev'
+        ? (el.querySelectorAll(selector) as NodeListOf<HTMLElement>)
+        : el.querySelector(selector) as HTMLElement | null;
+      if (direction === 'prev') {
+        const list = found as NodeListOf<HTMLElement>;
+        if (list.length > 0) return list[list.length - 1];
+      } else {
+        if (found) return found as HTMLElement;
+      }
+      // Move to sibling, crossing page boundaries
+      const sibling = direction === 'next'
+        ? el.nextElementSibling
+        : el.previousElementSibling;
+      if (sibling) {
+        el = sibling as HTMLElement;
+      } else {
+        const page = el.parentElement;
+        const adjacentPage = direction === 'next'
+          ? page?.nextElementSibling
+          : page?.previousElementSibling;
+        el = adjacentPage
+          ? (direction === 'next'
+            ? adjacentPage.firstElementChild
+            : adjacentPage.lastElementChild) as HTMLElement | null
+          : null;
+      }
+    }
+    return null;
+  };
+
+  const focusEditable = (target: HTMLElement, toEnd: boolean) => {
+    target.focus({ preventScroll: true });
+    const range = document.createRange();
+    const sel = window.getSelection();
+    if (sel) {
+      if (target.childNodes.length > 0) {
+        range.selectNodeContents(target);
+      } else {
+        range.setStart(target, 0);
+      }
+      range.collapse(toEnd ? false : true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  };
+
+  const isCursorOnFirstLine = (el: HTMLElement): boolean => {
+    if (isContentEmpty(el.innerHTML)) return true;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return true;
+    const cursorRect = sel.getRangeAt(0).getBoundingClientRect();
+    if (cursorRect.height === 0) return true;
+    // Compare cursor top with the top of the first line
+    const elRect = el.getBoundingClientRect();
+    return cursorRect.top - elRect.top < 4;
+  };
+
+  const isCursorOnLastLine = (el: HTMLElement): boolean => {
+    if (isContentEmpty(el.innerHTML)) return true;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return true;
+    const cursorRect = sel.getRangeAt(0).getBoundingClientRect();
+    if (cursorRect.height === 0) return true;
+    const elRect = el.getBoundingClientRect();
+    return elRect.bottom - cursorRect.bottom < 4;
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Tab indent/dedent for lists
     if (e.key === 'Tab' && isList) {
@@ -166,7 +241,6 @@ export const Block: React.FC<BlockProps> = ({
           addListBlock(block.id, block.type, indent);
         }
       } else {
-        // Check if cursor is at the start of the block
         const sel = window.getSelection();
         const el = document.getElementById(`editable-${block.id}`);
         let atStart = false;
@@ -175,32 +249,24 @@ export const Block: React.FC<BlockProps> = ({
           const preRange = document.createRange();
           preRange.setStart(el, 0);
           preRange.setEnd(range.startContainer, range.startOffset);
-          const textBefore = preRange.toString();
-          atStart = textBefore.length === 0;
+          atStart = preRange.toString().length === 0;
         }
         if (atStart && !isContentEmpty(block.content)) {
-          // Insert empty block BEFORE current block (Notion behavior)
           addBlockBefore(block.id);
+        } else if (el && sel && sel.rangeCount > 0) {
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          const afterRange = document.createRange();
+          afterRange.setStart(range.endContainer, range.endOffset);
+          afterRange.setEndAfter(el.lastChild || el);
+          const fragment = afterRange.extractContents();
+          const temp = document.createElement('div');
+          temp.appendChild(fragment);
+          const afterContent = temp.innerHTML;
+          updateBlock(block.id, { content: el.innerHTML });
+          addBlockWithContent(block.id, afterContent);
         } else {
-          // Split: text after cursor goes to new block
-          if (el && sel && sel.rangeCount > 0) {
-            const range = sel.getRangeAt(0);
-            range.deleteContents();
-            // Extract everything after cursor
-            const afterRange = document.createRange();
-            afterRange.setStart(range.endContainer, range.endOffset);
-            afterRange.setEndAfter(el.lastChild || el);
-            const fragment = afterRange.extractContents();
-            const temp = document.createElement('div');
-            temp.appendChild(fragment);
-            const afterContent = temp.innerHTML;
-            // Update current block with content before cursor
-            updateBlock(block.id, { content: el.innerHTML });
-            // Add new block with content after cursor
-            addBlockWithContent(block.id, afterContent);
-          } else {
-            addBlock(block.id);
-          }
+          addBlock(block.id);
         }
       }
     }
@@ -214,7 +280,6 @@ export const Block: React.FC<BlockProps> = ({
           removeBlock(block.id);
         }
       } else {
-        // Check if cursor is at the very start
         const sel = window.getSelection();
         const el = document.getElementById(`editable-${block.id}`);
         if (sel && el && sel.rangeCount > 0 && sel.isCollapsed) {
@@ -222,109 +287,52 @@ export const Block: React.FC<BlockProps> = ({
           const preRange = document.createRange();
           preRange.setStart(el, 0);
           preRange.setEnd(range.startContainer, range.startOffset);
-          const textBefore = preRange.toString();
-          if (textBefore.length === 0) {
+          if (preRange.toString().length === 0) {
             e.preventDefault();
-            // Merge with previous block
             mergeWithPrevious(block.id);
           }
         }
       }
     }
 
+    // Arrow navigation: only intercept at block boundaries, let browser handle the rest
     if (e.key === 'ArrowUp') {
-      const currentEl = document.getElementById(`editable-${block.id}`);
-      if (!currentEl) return;
-
-      // Only navigate to previous block if cursor is on the first line
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const cursorRect = sel.getRangeAt(0).getBoundingClientRect();
-        const elRect = currentEl.getBoundingClientRect();
-        // If cursor top is not near the element top, let the browser handle it (move within block)
-        if (cursorRect.top - elRect.top > 4) return;
-      }
-
-      e.preventDefault();
-      const blockContainer = currentEl.closest('.group');
-      let candidate = blockContainer?.previousSibling as HTMLElement | null;
-      if (!candidate) {
-        const page = blockContainer?.parentElement;
+      const el = document.getElementById(`editable-${block.id}`);
+      if (!el || !isCursorOnFirstLine(el)) return;
+      const container = el.closest('[data-block-id]');
+      if (!container) return;
+      // Get the previous sibling, crossing page boundaries if needed
+      let startEl = container.previousElementSibling as HTMLElement | null;
+      if (!startEl) {
+        const page = container.parentElement;
         const prevPage = page?.previousElementSibling as HTMLElement | null;
-        if (prevPage) candidate = prevPage.lastElementChild as HTMLElement | null;
+        startEl = prevPage?.lastElementChild as HTMLElement | null;
       }
-      while (candidate) {
-        const editables = candidate.querySelectorAll('[contenteditable]');
-        if (editables.length > 0) {
-          const target = editables[editables.length - 1] as HTMLElement;
-          target.focus({ preventScroll: true });
-          // Place cursor at the end of the last line
-          const range = document.createRange();
-          const s = window.getSelection();
-          range.selectNodeContents(target);
-          range.collapse(false);
-          s?.removeAllRanges();
-          s?.addRange(range);
-          break;
-        }
-        const prev = candidate.previousSibling as HTMLElement | null;
-        if (prev) {
-          candidate = prev;
-        } else {
-          const page = candidate.parentElement;
-          const prevPage = page?.previousElementSibling as HTMLElement | null;
-          candidate = prevPage ? prevPage.lastElementChild as HTMLElement | null : null;
-        }
+      const target = findEditable(startEl, 'prev');
+      if (target) {
+        e.preventDefault();
+        focusEditable(target, true);
       }
     }
 
     if (e.key === 'ArrowDown') {
-      const currentEl = document.getElementById(`editable-${block.id}`);
-      if (!currentEl) return;
-
-      // Only navigate to next block if cursor is on the last line
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const cursorRect = sel.getRangeAt(0).getBoundingClientRect();
-        const elRect = currentEl.getBoundingClientRect();
-        // If cursor bottom is not near the element bottom, let the browser handle it
-        if (elRect.bottom - cursorRect.bottom > 4) return;
-      }
-
-      e.preventDefault();
-      const blockContainer = currentEl.closest('.group');
-      let candidate = blockContainer?.nextSibling as HTMLElement | null;
-      if (!candidate) {
-        const page = blockContainer?.parentElement;
+      const el = document.getElementById(`editable-${block.id}`);
+      if (!el || !isCursorOnLastLine(el)) return;
+      const container = el.closest('[data-block-id]');
+      if (!container) return;
+      let startEl = container.nextElementSibling as HTMLElement | null;
+      if (!startEl) {
+        const page = container.parentElement;
         const nextPage = page?.nextElementSibling as HTMLElement | null;
-        if (nextPage) candidate = nextPage.firstElementChild as HTMLElement | null;
+        startEl = nextPage?.firstElementChild as HTMLElement | null;
       }
-      while (candidate) {
-        const editable = candidate.querySelector('[contenteditable]') as HTMLElement | null;
-        if (editable) {
-          editable.focus({ preventScroll: true });
-          // Place cursor at the start of the first line
-          const range = document.createRange();
-          const s = window.getSelection();
-          range.selectNodeContents(editable);
-          range.collapse(true);
-          s?.removeAllRanges();
-          s?.addRange(range);
-          break;
-        }
-        const next = candidate.nextSibling as HTMLElement | null;
-        if (next) {
-          candidate = next;
-        } else {
-          const page = candidate.parentElement;
-          const nextPage = page?.nextElementSibling as HTMLElement | null;
-          candidate = nextPage ? nextPage.firstElementChild as HTMLElement | null : null;
-        }
-      }
-      if (!candidate && globalIndex === blocks.length - 1) {
-        if (!isContentEmpty(block.content)) {
-          addBlock(block.id);
-        }
+      const target = findEditable(startEl, 'next');
+      if (target) {
+        e.preventDefault();
+        focusEditable(target, false);
+      } else if (globalIndex === blocks.length - 1 && !isContentEmpty(block.content)) {
+        e.preventDefault();
+        addBlock(block.id);
       }
     }
   };
@@ -405,44 +413,15 @@ export const Block: React.FC<BlockProps> = ({
             block={block}
             updateBlock={updateBlock}
             onNavigateOut={(direction) => {
-              const blockContainer = internalRef.current;
+              const container = internalRef.current;
+              if (!container) return;
               if (direction === 'down') {
-                let candidate = blockContainer?.nextSibling as HTMLElement | null;
-                if (!candidate) {
-                  const page = blockContainer?.parentElement;
-                  const nextPage = page?.nextElementSibling as HTMLElement | null;
-                  if (nextPage) candidate = nextPage.firstElementChild as HTMLElement | null;
-                }
-                while (candidate) {
-                  const editable = candidate.querySelector('[contenteditable]') as HTMLElement | null;
-                  if (editable) { editable.focus({ preventScroll: true }); break; }
-                  const next = candidate.nextSibling as HTMLElement | null;
-                  if (next) { candidate = next; } else {
-                    const page = candidate.parentElement;
-                    const nextPage = page?.nextElementSibling as HTMLElement | null;
-                    candidate = nextPage ? nextPage.firstElementChild as HTMLElement | null : null;
-                  }
-                }
-                if (!candidate && globalIndex === blocks.length - 1) {
-                  addBlock(block.id);
-                }
+                const target = findEditable(container.nextElementSibling as HTMLElement, 'next');
+                if (target) focusEditable(target, false);
+                else if (globalIndex === blocks.length - 1) addBlock(block.id);
               } else {
-                let candidate = blockContainer?.previousSibling as HTMLElement | null;
-                if (!candidate) {
-                  const page = blockContainer?.parentElement;
-                  const prevPage = page?.previousElementSibling as HTMLElement | null;
-                  if (prevPage) candidate = prevPage.lastElementChild as HTMLElement | null;
-                }
-                while (candidate) {
-                  const editables = candidate.querySelectorAll('[contenteditable]');
-                  if (editables.length > 0) { (editables[editables.length - 1] as HTMLElement).focus({ preventScroll: true }); break; }
-                  const prev = candidate.previousSibling as HTMLElement | null;
-                  if (prev) { candidate = prev; } else {
-                    const page = candidate.parentElement;
-                    const prevPage = page?.previousElementSibling as HTMLElement | null;
-                    candidate = prevPage ? prevPage.lastElementChild as HTMLElement | null : null;
-                  }
-                }
+                const target = findEditable(container.previousElementSibling as HTMLElement, 'prev');
+                if (target) focusEditable(target, true);
               }
             }}
           />

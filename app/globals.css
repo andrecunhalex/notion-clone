@@ -12,9 +12,18 @@ body {
   word-break: break-word;
 }
 
-/* Placeholder only when focused and content is empty */
+/* Editable blocks need relative positioning for the placeholder */
+.editable-block {
+  position: relative;
+  min-height: 24px;
+}
+
+/* Placeholder only when focused and content is empty — absolutely positioned to avoid layout shift */
 .editable-block.is-empty:focus::before {
   content: attr(data-placeholder);
   color: #d1d5db;
   pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
 }

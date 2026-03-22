@@ -46,8 +46,69 @@ export const useBlockManager = ({ blocks, setBlocks }: UseBlockManagerProps) => 
     const index = blocks.findIndex(b => b.id === id);
     if (index <= 0) return;
     const prevBlock = blocks[index - 1];
-    // Can only merge with text-like blocks
-    if (prevBlock.type === 'divider' || prevBlock.type === 'table' || prevBlock.type === 'image') return;
+    // If previous block is a divider, swap: move current block above the divider
+    if (prevBlock.type === 'divider') {
+      const newBlocks = [...blocks];
+      // Swap positions
+      newBlocks[index] = prevBlock;
+      newBlocks[index - 1] = blocks[index];
+      setBlocks(newBlocks);
+      // After swap, check if the block now above current (index - 2) is text-like and merge
+      if (index - 2 >= 0) {
+        const aboveBlock = newBlocks[index - 2];
+        if (aboveBlock.type !== 'divider' && aboveBlock.type !== 'table' && aboveBlock.type !== 'image') {
+          // Merge current block with the one above it
+          const currentBlock = newBlocks[index - 1];
+          const aboveContent = aboveBlock.content || '';
+          const currentContent = currentBlock.content || '';
+          const mergedContent = aboveContent + currentContent;
+          const mergedBlocks = [...newBlocks];
+          mergedBlocks[index - 2] = { ...aboveBlock, content: mergedContent };
+          mergedBlocks.splice(index - 1, 1);
+          setBlocks(mergedBlocks);
+          // Focus at the join point
+          setTimeout(() => {
+            const el = document.getElementById(`editable-${aboveBlock.id}`);
+            if (el) {
+              el.innerHTML = mergedContent;
+              el.focus({ preventScroll: true });
+              const tempDiv = document.createElement('div');
+              tempDiv.innerHTML = aboveContent;
+              const prevTextLength = tempDiv.textContent?.length || 0;
+              const range = document.createRange();
+              const sel = window.getSelection();
+              let charCount = 0;
+              const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+              let placed = false;
+              while (walker.nextNode()) {
+                const node = walker.currentNode as Text;
+                const nodeLen = node.textContent?.length || 0;
+                if (charCount + nodeLen >= prevTextLength) {
+                  range.setStart(node, prevTextLength - charCount);
+                  range.collapse(true);
+                  sel?.removeAllRanges();
+                  sel?.addRange(range);
+                  placed = true;
+                  break;
+                }
+                charCount += nodeLen;
+              }
+              if (!placed) {
+                range.selectNodeContents(el);
+                range.collapse(false);
+                sel?.removeAllRanges();
+                sel?.addRange(range);
+              }
+            }
+          }, 0);
+          return;
+        }
+      }
+      focusBlock(id, 'start');
+      return;
+    }
+    // Can't merge with table or image
+    if (prevBlock.type === 'table' || prevBlock.type === 'image') return;
     const currentBlock = blocks[index];
     const prevContent = prevBlock.content || '';
     const currentContent = currentBlock.content || '';
