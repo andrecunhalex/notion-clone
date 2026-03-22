@@ -74,6 +74,15 @@ const Tooltip: React.FC<{ label: string; shortcut: string; children: React.React
   );
 };
 
+// --- Color comparison helper (DOM returns rgb(), our constants use hex) ---
+const normalizeColor = (color: string): string => {
+  if (!color) return '';
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return color.toLowerCase();
+  ctx.fillStyle = color;
+  return ctx.fillStyle.toLowerCase(); // always returns #rrggbb
+};
+
 // --- Main component ---
 interface FloatingToolbarProps {
   documentFont?: string;
@@ -88,6 +97,9 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
   const colorMenuRef = useRef<HTMLDivElement>(null);
   const [colorMenuPos, setColorMenuPos] = useState<{ left: number; top: number } | null>(null);
   const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set());
+  const [currentTextColor, setCurrentTextColor] = useState<string>('');
+  const [currentBgColor, setCurrentBgColor] = useState<string>('');
+
 
   // Font picker state
   const [fontOpen, setFontOpen] = useState(false);
@@ -153,7 +165,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
     } catch { /* ignore */ }
     setActiveFormats(formats);
 
-    // Detect current font and weight at selection
+    // Detect current font, weight, and colors at selection
     const sel = window.getSelection();
     if (sel && sel.rangeCount > 0) {
       const node = sel.anchorNode;
@@ -169,6 +181,35 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
         );
         setCurrentFont(matched?.family || '');
         setCurrentWeight(weight);
+
+        // Detect text color — walk up to find an explicit color (from foreColor / <font color>)
+        let colorEl: HTMLElement | null = el;
+        let detectedTextColor = '';
+        while (colorEl && !colorEl.hasAttribute('contenteditable')) {
+          if (colorEl.style.color) {
+            detectedTextColor = colorEl.style.color;
+            break;
+          }
+          if (colorEl.tagName === 'FONT' && colorEl.getAttribute('color')) {
+            detectedTextColor = colorEl.getAttribute('color') || '';
+            break;
+          }
+          colorEl = colorEl.parentElement;
+        }
+        setCurrentTextColor(detectedTextColor);
+
+        // Detect background color — walk up to find an explicit backgroundColor (from hiliteColor)
+        let bgEl: HTMLElement | null = el;
+        let detectedBgColor = '';
+        while (bgEl && !bgEl.hasAttribute('contenteditable')) {
+          const bg = bgEl.style.backgroundColor;
+          if (bg && bg !== 'transparent') {
+            detectedBgColor = bg;
+            break;
+          }
+          bgEl = bgEl.parentElement;
+        }
+        setCurrentBgColor(detectedBgColor);
       }
     }
   }, [allFonts]);
@@ -657,7 +698,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
             className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 max-w-[100px] ${fontOpen ? 'bg-gray-100' : ''}`}
             onClick={() => { setFontOpen(!fontOpen); setColorOpen(false); setWeightOpen(false); }}
           >
-            <Type size={14} />
+            <Type size={14} className="shrink-0 relative -top-[0.25px]" />
             <span className="truncate">
               {currentFont
                 ? allFonts.find(f => f.family === currentFont)?.name || 'Fonte'
@@ -728,33 +769,49 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont }
           {/* Text colors */}
           <div className="text-xs font-medium text-gray-500 mb-1.5">Cor do texto</div>
           <div className="grid grid-cols-5 gap-1 mb-3">
-            {TEXT_COLORS.map(c => (
-              <button
-                key={c.name}
-                className="w-9 h-9 rounded-md flex items-center justify-center hover:bg-gray-50 border border-transparent hover:border-gray-300 transition-colors"
-                title={c.name}
-                onClick={() => applyTextColor(c.value)}
-              >
-                <span
-                  className="text-sm font-bold"
-                  style={{ color: c.preview }}
-                >A</span>
-              </button>
-            ))}
+            {TEXT_COLORS.map(c => {
+              const isActive = c.value
+                ? normalizeColor(currentTextColor) === normalizeColor(c.value)
+                : !currentTextColor;
+              return (
+                <button
+                  key={c.name}
+                  className={`w-9 h-9 rounded-md flex items-center justify-center hover:bg-gray-50 border transition-colors ${
+                    isActive ? 'border-gray-400 bg-gray-100' : 'border-transparent hover:border-gray-300'
+                  }`}
+                  title={c.name}
+                  onClick={() => applyTextColor(c.value)}
+                >
+                  <span
+                    className="text-sm font-bold"
+                    style={{ color: c.preview }}
+                  >A</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Background colors */}
           <div className="text-xs font-medium text-gray-500 mb-1.5">Cor de fundo</div>
           <div className="grid grid-cols-5 gap-1">
-            {BG_COLORS.map(c => (
-              <button
-                key={c.name}
-                className={`w-9 h-9 rounded-md hover:ring-2 hover:ring-gray-300 transition-all ${c.border ? 'ring-1 ring-gray-200' : ''}`}
-                style={{ backgroundColor: c.preview }}
-                title={c.name}
-                onClick={() => applyBgColor(c.value)}
-              />
-            ))}
+            {BG_COLORS.map(c => {
+              const isActive = c.value
+                ? normalizeColor(currentBgColor) === normalizeColor(c.value)
+                : !currentBgColor;
+              return (
+                <button
+                  key={c.name}
+                  className={`w-9 h-9 rounded-md transition-all ${
+                    isActive
+                      ? 'ring-2 ring-gray-400'
+                      : `hover:ring-2 hover:ring-gray-300 ${c.border ? 'ring-1 ring-gray-200' : ''}`
+                  }`}
+                  style={{ backgroundColor: c.preview }}
+                  title={c.name}
+                  onClick={() => applyBgColor(c.value)}
+                />
+              );
+            })}
           </div>
         </div>
       )}
