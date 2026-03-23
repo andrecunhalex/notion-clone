@@ -27,10 +27,11 @@ export type {
   TextAlign,
   EditorDataSourceInterface,
   EditorConfig,
+  PageConfig,
 } from './types';
 
 // Utils úteis para extensão
-export { generateId, createEmptyBlock, isContentEmpty, focusBlock } from './utils';
+export { generateId, createEmptyBlock, isContentEmpty, focusBlock, resolvePageConfig, getContentHeight, DEFAULT_PAGE_CONFIG } from './utils';
 
 // Parsing utils (para quem quiser converter HTML <-> Blocks)
 export {

@@ -1,4 +1,4 @@
-import { BlockData, BlockType, TableData } from '../types';
+import { BlockData, BlockType, TableData, PageConfig } from '../types';
 
 // Gera ID único (crypto.randomUUID é mais seguro contra colisões em cenários multiplayer)
 export const generateId = (): string =>
@@ -51,6 +51,28 @@ export const createDefaultTableData = (): TableData => ({
 
 // Constantes de paginação (A4 em pixels ~96dpi: 794x1123, com margens de 20mm = ~75px cada lado)
 export const PAGE_CONTENT_HEIGHT = 950; // Altura útil da página
+
+// Default page dimensions (A4 at 96dpi)
+export const DEFAULT_PAGE_CONFIG = {
+  width: 794,
+  height: 1123,
+  paddingTop: 56,
+  paddingRight: 75,
+  paddingBottom: 56,
+  paddingLeft: 75,
+} as const;
+
+export type ResolvedPageConfig = Required<PageConfig>;
+
+/** Merge user PageConfig with defaults */
+export const resolvePageConfig = (page?: PageConfig): ResolvedPageConfig => ({
+  ...DEFAULT_PAGE_CONFIG,
+  ...page,
+});
+
+/** Calculate usable content height from resolved page config */
+export const getContentHeight = (page: ResolvedPageConfig): number =>
+  page.height - page.paddingTop - page.paddingBottom;
 
 // Calcula páginas para modo paginado
 export const getPaginatedBlocks = (

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { RotateCcw, RotateCw, FileText, Scroll, ChevronDown, X } from 'lucide-react';
+import { RotateCcw, RotateCw, FileText, Scroll, ChevronDown, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { ViewMode } from '../types';
 import { useFonts } from './FontLoader';
 
@@ -38,6 +38,10 @@ interface ToolbarProps {
   followingUserId?: string | null;
   /** Called when user clicks an avatar to follow/unfollow */
   onFollowUser?: (userId: string | null) => void;
+  /** Current zoom level (0.1–3) */
+  zoom?: number;
+  /** Called when zoom changes */
+  onZoomChange?: (zoom: number) => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -54,6 +58,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   syncStatus,
   followingUserId,
   onFollowUser,
+  zoom = 1,
+  onZoomChange,
 }) => {
   const { allFonts, customFonts } = useFonts();
   const [fontOpen, setFontOpen] = useState(false);
@@ -223,6 +229,35 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         >
           {viewMode === 'continuous' ? <FileText size={16} /> : <Scroll size={16} />}
         </button>
+
+        {viewMode === 'paginated' && onZoomChange && (
+          <>
+            <div className="w-px h-4 bg-gray-200 mx-1" />
+            <button
+              onClick={() => onZoomChange(Math.max(0.25, Math.round((zoom - 0.1) * 100) / 100))}
+              disabled={zoom <= 0.25}
+              className="p-1 hover:bg-gray-100 rounded disabled:opacity-30"
+              title="Diminuir zoom"
+            >
+              <ZoomOut size={16} />
+            </button>
+            <button
+              onClick={() => onZoomChange(1)}
+              className="px-1.5 py-0.5 hover:bg-gray-100 rounded text-xs text-gray-600 min-w-[3rem] text-center tabular-nums"
+              title="Resetar zoom"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              onClick={() => onZoomChange(Math.min(3, Math.round((zoom + 0.1) * 100) / 100))}
+              disabled={zoom >= 3}
+              className="p-1 hover:bg-gray-100 rounded disabled:opacity-30"
+              title="Aumentar zoom"
+            >
+              <ZoomIn size={16} />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig } from './types';
-import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty, getListNumber } from './utils';
+import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty, getListNumber, resolvePageConfig, getContentHeight } from './utils';
 import {
   useBlockManager,
   useSelection,
@@ -31,7 +31,12 @@ const NotionEditorInner: React.FC<{
   const { blocks, setBlocks: setBlocksRaw, undo: undoRaw, redo: redoRaw, canUndo, canRedo, meta, setMeta } = dataSource;
 
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
+  const [zoom, setZoom] = useState(config.defaultZoom ?? 1);
   const [followingUserId, setFollowingUserId] = useState<string | null>(null);
+
+  const pageConfig = useMemo(() => resolvePageConfig(config.page), [config.page]);
+  const pageContentHeight = config.pageContentHeight ?? getContentHeight(pageConfig);
+
   const documentFont = (meta.documentFont as string) || SYSTEM_FONTS[0].family;
   const setDocumentFont = useCallback((font: string) => {
     setMeta({ documentFont: font });
@@ -41,6 +46,7 @@ const NotionEditorInner: React.FC<{
   });
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const blockRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   const {
@@ -68,7 +74,7 @@ const NotionEditorInner: React.FC<{
     setSelectedIds(new Set(restoredIds));
   }, [redoRaw, setSelectedIds]);
 
-  const { blockHeights, handleHeightChange } = usePagination({ blocks, setBlocks, viewMode, pageContentHeight: config.pageContentHeight });
+  const { blockHeights, handleHeightChange } = usePagination({ blocks, setBlocks, viewMode, pageContentHeight });
 
   const { updateBlock, addBlock, addBlockBefore, addBlockWithContent, addListBlock, removeBlock, mergeWithPrevious, deleteSelectedBlocks, moveBlocks } = useBlockManager({
     blocks, setBlocks
@@ -216,7 +222,7 @@ const NotionEditorInner: React.FC<{
     }
   }, [slashMenu.blockId, blocks, updateBlock, setBlocks]);
 
-  const pages = getPaginatedBlocks(blocks, blockHeights, viewMode, config.pageContentHeight);
+  const pages = getPaginatedBlocks(blocks, blockHeights, viewMode, pageContentHeight);
 
   // Pre-compute list numbers for all blocks to avoid passing the entire blocks array to Block
   const listNumbers = useMemo(() => {
@@ -263,6 +269,95 @@ const NotionEditorInner: React.FC<{
     };
   }, [followingUserId]);
 
+  // Auto-fit zoom on mount for small screens + always center horizontally
+  const hasAutoFitted = useRef(false);
+  useEffect(() => {
+    if (hasAutoFitted.current) return;
+    if (viewMode !== 'paginated') return;
+    hasAutoFitted.current = true;
+
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+
+    const viewportWidth = scrollEl.clientWidth;
+    const horizontalPadding = 32;
+    const availableWidth = viewportWidth - horizontalPadding;
+    let appliedZoom = zoom;
+
+    if (availableWidth < pageConfig.width) {
+      appliedZoom = Math.max(0.25, Math.floor((availableWidth / pageConfig.width) * 100) / 100);
+      setZoom(appliedZoom);
+    }
+
+    // Center horizontally after zoom is applied
+    requestAnimationFrame(() => {
+      const scaledWidth = pageConfig.width * appliedZoom;
+      const overflow = scaledWidth - scrollEl.clientWidth;
+      scrollEl.scrollLeft = overflow > 0 ? overflow / 2 : 0;
+    });
+  }, [viewMode, pageConfig.width, zoom]);
+
+  // Zoom: Ctrl+= / Ctrl+- / Ctrl+0 keyboard shortcuts
+  useEffect(() => {
+    if (viewMode !== 'paginated') return;
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        setZoom(z => Math.min(3, Math.round((z + 0.1) * 100) / 100));
+      } else if (e.key === '-') {
+        e.preventDefault();
+        setZoom(z => Math.max(0.25, Math.round((z - 0.1) * 100) / 100));
+      } else if (e.key === '0') {
+        e.preventDefault();
+        setZoom(1);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [viewMode]);
+
+  // Zoom: Ctrl+wheel — native listener with { passive: false } to allow preventDefault
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  useEffect(() => {
+    if (viewMode !== 'paginated') return;
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+
+    const handler = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+
+      const oldZoom = zoomRef.current;
+      // Proportional delta clamped to a small range for smooth feel
+      const rawDelta = -e.deltaY * 0.001;
+      const clampedDelta = Math.max(-0.03, Math.min(0.03, rawDelta));
+      const newZoom = Math.min(3, Math.max(0.25, Math.round((oldZoom + clampedDelta) * 100) / 100));
+      if (newZoom === oldZoom) return;
+
+      // Zoom toward mouse position: adjust scroll so the point under the cursor stays put
+      const scrollRect = scrollEl.getBoundingClientRect();
+      const mouseY = e.clientY - scrollRect.top + scrollEl.scrollTop;
+      const mouseX = e.clientX - scrollRect.left + scrollEl.scrollLeft;
+
+      // The point in unscaled document coords that the mouse is over
+      const docY = mouseY / oldZoom;
+      const docX = mouseX / oldZoom;
+
+      setZoom(newZoom);
+
+      // After scale change, adjust scroll so that same doc point stays under cursor
+      requestAnimationFrame(() => {
+        scrollEl.scrollTop = docY * newZoom - (e.clientY - scrollRect.top);
+        scrollEl.scrollLeft = docX * newZoom - (e.clientX - scrollRect.left);
+      });
+    };
+
+    scrollEl.addEventListener('wheel', handler, { passive: false });
+    return () => scrollEl.removeEventListener('wheel', handler);
+  }, [viewMode]);
+
   return (
     <div
       className={`min-h-screen text-gray-800 selection:bg-blue-200 ${
@@ -285,60 +380,96 @@ const NotionEditorInner: React.FC<{
         syncStatus={syncStatus}
         followingUserId={followingUserId}
         onFollowUser={setFollowingUserId}
+        zoom={zoom}
+        onZoomChange={setZoom}
       />
 
       <div
-        ref={containerRef}
-        className={`mx-auto relative cursor-text transition-all duration-300 ${
-          viewMode === 'paginated'
-            ? 'pt-8 overflow-x-hidden'
-            : 'max-w-3xl mt-12 px-12 pb-64 min-h-[80vh] overflow-x-hidden'
+        ref={scrollRef}
+        className={`relative overflow-auto ${
+          viewMode === 'paginated' ? 'pt-8 pb-8' : ''
         }`}
-        style={{ fontFamily: documentFont || undefined }}
-        onDragOver={handleContainerDragOver}
-        onDrop={handleDrop}
       >
-        {pages.map((pageBlocks, pageIndex) => (
-          <div
-            key={pageIndex}
-            className={
-              viewMode === 'paginated'
-                ? 'min-h-[297mm] bg-white shadow-lg px-[20mm] py-[15mm] mb-8 mx-auto max-w-[210mm] overflow-x-hidden'
-                : ''
-            }
-            onClick={e => handlePageClick(e, pageBlocks)}
-          >
-            {pageBlocks.map((block, index) => (
-              <Block
-                key={block.id}
-                index={index}
-                block={block}
-                listNumber={listNumbers[block.id] || 1}
-                isLastBlock={block.id === lastBlockId}
-                isSelected={selectedIds.has(block.id)}
-                updateBlock={updateBlock}
-                addBlock={addBlock}
-                addBlockBefore={addBlockBefore}
-                addBlockWithContent={addBlockWithContent}
-                addListBlock={addListBlock}
-                removeBlock={removeBlock}
-                mergeWithPrevious={mergeWithPrevious}
-                setSlashMenu={setSlashMenu}
-                blockRef={el => (blockRefs.current[block.id] = el)}
-                onDragStart={handleDragStart}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                dropTarget={dropTarget}
-                onHeightChange={handleHeightChange}
-                onClearSelection={clearSelection}
-                onBlockFocus={onBlockFocus}
-                uploadImage={config.uploadImage}
-              />
-            ))}
-          </div>
-        ))}
+        <div
+          ref={containerRef}
+          className={`relative cursor-text ${
+            viewMode === 'paginated'
+              ? 'mx-auto'
+              : 'max-w-3xl mx-auto mt-12 px-12 pb-64 min-h-[80vh] overflow-x-hidden'
+          }`}
+          style={{
+            fontFamily: documentFont || undefined,
+            ...(viewMode === 'paginated' ? {
+              width: pageConfig.width,
+              transform: `scale(${zoom})`,
+              transformOrigin: 'top center',
+              /* Reserve visual space for the scaled content */
+            } : {}),
+          }}
+          onDragOver={handleContainerDragOver}
+          onDrop={handleDrop}
+        >
+          {pages.map((pageBlocks, pageIndex) => (
+            <div
+              key={pageIndex}
+              className={
+                viewMode === 'paginated'
+                  ? 'bg-white shadow-lg overflow-hidden'
+                  : ''
+              }
+              style={viewMode === 'paginated' ? {
+                width: pageConfig.width,
+                minHeight: pageConfig.height,
+                paddingTop: pageConfig.paddingTop,
+                paddingRight: pageConfig.paddingRight,
+                paddingBottom: pageConfig.paddingBottom,
+                paddingLeft: pageConfig.paddingLeft,
+                marginBottom: 32,
+                boxSizing: 'border-box',
+              } : undefined}
+              onClick={e => handlePageClick(e, pageBlocks)}
+            >
+              {pageBlocks.map((block, index) => (
+                <Block
+                  key={block.id}
+                  index={index}
+                  block={block}
+                  listNumber={listNumbers[block.id] || 1}
+                  isLastBlock={block.id === lastBlockId}
+                  isSelected={selectedIds.has(block.id)}
+                  updateBlock={updateBlock}
+                  addBlock={addBlock}
+                  addBlockBefore={addBlockBefore}
+                  addBlockWithContent={addBlockWithContent}
+                  addListBlock={addListBlock}
+                  removeBlock={removeBlock}
+                  mergeWithPrevious={mergeWithPrevious}
+                  setSlashMenu={setSlashMenu}
+                  blockRef={el => (blockRefs.current[block.id] = el)}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                  dropTarget={dropTarget}
+                  onHeightChange={handleHeightChange}
+                  onClearSelection={clearSelection}
+                  onBlockFocus={onBlockFocus}
+                  uploadImage={config.uploadImage}
+                />
+              ))}
+            </div>
+          ))}
 
-        <div className="h-32 -mx-12 cursor-text" onClick={handleBottomClick} />
+          {viewMode === 'continuous' && (
+            <div className="h-32 -mx-12 cursor-text" onClick={handleBottomClick} />
+          )}
+          {viewMode === 'paginated' && (
+            <div
+              className="cursor-text"
+              style={{ width: pageConfig.width, height: 64 }}
+              onClick={handleBottomClick}
+            />
+          )}
+        </div>
       </div>
 
       <SelectionOverlay selectionBox={selectionBox} containerRef={containerRef} />

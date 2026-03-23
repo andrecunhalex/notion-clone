@@ -71,9 +71,27 @@ export interface EditorDataSourceInterface {
   setMeta?: (updates: Record<string, unknown>) => void;
 }
 
+// Page dimensions and padding configuration
+export interface PageConfig {
+  /** Page width in px (default: 794 — A4 at 96dpi) */
+  width?: number;
+  /** Page height in px (default: 1123 — A4 at 96dpi) */
+  height?: number;
+  /** Padding top in px (default: 56 ≈ 15mm) */
+  paddingTop?: number;
+  /** Padding right in px (default: 75 ≈ 20mm) */
+  paddingRight?: number;
+  /** Padding bottom in px (default: 56 ≈ 15mm) */
+  paddingBottom?: number;
+  /** Padding left in px (default: 75 ≈ 20mm) */
+  paddingLeft?: number;
+}
+
 // Editor configuration for customizable values
 export interface EditorConfig {
-  /** Height in px of the usable page area in paginated mode (default: 950) */
+  /** Page dimensions and padding (paginated mode) */
+  page?: PageConfig;
+  /** Height in px of the usable page area in paginated mode (default: auto-calculated from page config) */
   pageContentHeight?: number;
   /** History debounce window in ms (default: 500) */
   historyDebounceMs?: number;
@@ -81,6 +99,8 @@ export interface EditorConfig {
   fetchFonts?: () => Promise<import('../fonts').FontFamily[]>;
   /** Custom image uploader — returns URL. If not provided, images are stored as base64 */
   uploadImage?: (file: File) => Promise<string | null>;
+  /** Initial zoom level (0.1 to 3, default: 1) */
+  defaultZoom?: number;
 }
 
 // Props do Editor principal (para reutilização)
