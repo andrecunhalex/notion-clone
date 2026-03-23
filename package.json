@@ -11,10 +11,13 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.99.3",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "y-indexeddb": "^9.0.12",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

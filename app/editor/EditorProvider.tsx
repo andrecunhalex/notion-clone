@@ -1,8 +1,17 @@
 'use client';
 
-import React, { createContext, useContext, useCallback, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useCallback, useRef, useMemo, useState } from 'react';
 import { BlockData } from './types';
 import { useHistory } from './hooks/useHistory';
+
+// ---------------------------------------------------------------------------
+// Document metadata (font, etc.) — synced alongside blocks
+// ---------------------------------------------------------------------------
+
+export interface DocumentMeta {
+  documentFont?: string;
+  [key: string]: unknown;
+}
 
 // ---------------------------------------------------------------------------
 // Interface do data source — implementações diferentes para local vs sync
@@ -16,17 +25,26 @@ export interface EditorDataSource {
   canUndo: boolean;
   canRedo: boolean;
   trackSelectedIds?: (ids: string[]) => void;
+  /** Document-level metadata (font, etc.) — synced in collab mode */
+  meta: DocumentMeta;
+  setMeta: (updates: Partial<DocumentMeta>) => void;
 }
 
 // ---------------------------------------------------------------------------
 // Local data source (default — useState + useHistory)
 // ---------------------------------------------------------------------------
 
+interface LocalState {
+  blocks: BlockData[];
+  meta: DocumentMeta;
+}
+
 export function useLocalDataSource(
   initialBlocks: BlockData[],
   debounceMs?: number,
 ): EditorDataSource {
-  const [blocks, setBlocksRaw, undoRaw, redoRaw, canUndo, canRedo] = useHistory<BlockData[]>(initialBlocks, debounceMs);
+  const initialState: LocalState = { blocks: initialBlocks, meta: {} };
+  const [state, setStateRaw, undoRaw, redoRaw, canUndo, canRedo] = useHistory<LocalState>(initialState, debounceMs);
 
   const selectedIdsRef = useRef<string[]>([]);
 
@@ -35,12 +53,24 @@ export function useLocalDataSource(
   }, []);
 
   const setBlocks = useCallback((newBlocks: BlockData[]) => {
-    setBlocksRaw(newBlocks, selectedIdsRef.current);
-  }, [setBlocksRaw]);
+    setStateRaw(prev => ({ ...prev, blocks: newBlocks }), selectedIdsRef.current);
+  }, [setStateRaw]);
+
+  const setMeta = useCallback((updates: Partial<DocumentMeta>) => {
+    setStateRaw(prev => ({ ...prev, meta: { ...prev.meta, ...updates } }), selectedIdsRef.current);
+  }, [setStateRaw]);
 
   return useMemo(() => ({
-    blocks, setBlocks, undo: undoRaw, redo: redoRaw, canUndo, canRedo, trackSelectedIds,
-  }), [blocks, setBlocks, undoRaw, redoRaw, canUndo, canRedo, trackSelectedIds]);
+    blocks: state.blocks,
+    meta: state.meta,
+    setBlocks,
+    setMeta,
+    undo: undoRaw,
+    redo: redoRaw,
+    canUndo,
+    canRedo,
+    trackSelectedIds,
+  }), [state.blocks, state.meta, setBlocks, setMeta, undoRaw, redoRaw, canUndo, canRedo, trackSelectedIds]);
 }
 
 // ---------------------------------------------------------------------------

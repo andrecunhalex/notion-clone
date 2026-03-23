@@ -29,6 +29,8 @@ interface BlockProps {
   dropTarget: DropTarget | null;
   onHeightChange: (id: string, height: number) => void;
   onClearSelection: () => void;
+  onBlockFocus?: (blockId: string | null) => void;
+  uploadImage?: (file: File) => Promise<string | null>;
 }
 
 const BLOCK_STYLES: Record<string, string> = {
@@ -84,6 +86,8 @@ const BlockInner: React.FC<BlockProps> = ({
   dropTarget,
   onHeightChange,
   onClearSelection,
+  onBlockFocus,
+  uploadImage,
 }) => {
   const internalRef = useRef<HTMLDivElement>(null);
   // Track whether the user is actively editing this block's contentEditable
@@ -146,6 +150,11 @@ const BlockInner: React.FC<BlockProps> = ({
     el.classList.toggle('is-empty', isContentEmpty(el.innerHTML));
     updateBlock(block.id, { content: el.innerHTML });
   }, [block.id, updateBlock]);
+
+  const handleFocus = useCallback(() => {
+    onClearSelection();
+    onBlockFocus?.(block.id);
+  }, [onClearSelection, onBlockFocus, block.id]);
 
   const isList = isListType(block.type);
   const indent = block.indent ?? 0;
@@ -221,6 +230,7 @@ const BlockInner: React.FC<BlockProps> = ({
             block={block}
             updateBlock={updateBlock}
             removeBlock={removeBlock}
+            uploadImage={uploadImage}
           />
         ) : isTable ? (
           <TableBlock
@@ -251,7 +261,7 @@ const BlockInner: React.FC<BlockProps> = ({
               data-placeholder={isList ? 'Lista...' : "Digite '/' para comandos..."}
               onKeyDown={handleKeyDown}
               onInput={handleInput}
-              onFocus={onClearSelection}
+              onFocus={handleFocus}
             />
           </div>
         )}

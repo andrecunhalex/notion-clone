@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig } from './types';
 import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty, getListNumber } from './utils';
 import {
@@ -24,11 +24,18 @@ const NotionEditorInner: React.FC<{
   defaultViewMode: ViewMode;
   title: string;
   config: EditorConfig;
-}> = ({ dataSource, onChange, defaultViewMode, title, config }) => {
-  const { blocks, setBlocks: setBlocksRaw, undo: undoRaw, redo: redoRaw, canUndo, canRedo } = dataSource;
+  onBlockFocus?: (blockId: string | null) => void;
+  remoteUsers?: { id: string; name: string; color: string; cursor?: { blockId: string } | null }[];
+  syncStatus?: 'disconnected' | 'connecting' | 'connected' | 'synced';
+}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus }) => {
+  const { blocks, setBlocks: setBlocksRaw, undo: undoRaw, redo: redoRaw, canUndo, canRedo, meta, setMeta } = dataSource;
 
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
-  const [documentFont, setDocumentFont] = useState<string>(SYSTEM_FONTS[0].family);
+  const [followingUserId, setFollowingUserId] = useState<string | null>(null);
+  const documentFont = (meta.documentFont as string) || SYSTEM_FONTS[0].family;
+  const setDocumentFont = useCallback((font: string) => {
+    setMeta({ documentFont: font });
+  }, [setMeta]);
   const [slashMenu, setSlashMenu] = useState<SlashMenuState>({
     isOpen: false, x: 0, y: 0, blockId: null
   });
@@ -224,6 +231,38 @@ const NotionEditorInner: React.FC<{
 
   const lastBlockId = blocks[blocks.length - 1]?.id;
 
+  // Follow mode: auto-scroll to the followed user's cursor block
+  useEffect(() => {
+    if (!followingUserId || !remoteUsers) return;
+    const followed = remoteUsers.find(u => u.id === followingUserId);
+    const blockId = followed?.cursor?.blockId;
+    if (!blockId) return;
+
+    const el = document.querySelector(`[data-block-id="${blockId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [followingUserId, remoteUsers]);
+
+  // Stop following when local user starts editing
+  useEffect(() => {
+    if (!followingUserId) return;
+    const onKeyDown = () => setFollowingUserId(null);
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Only stop following on clicks inside the editor content
+      if (target.closest('.notion-block-content') || target.closest('[contenteditable]')) {
+        setFollowingUserId(null);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, { once: true });
+    document.addEventListener('mousedown', onMouseDown, { once: true });
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('mousedown', onMouseDown);
+    };
+  }, [followingUserId]);
+
   return (
     <div
       className={`min-h-screen text-gray-800 selection:bg-blue-200 ${
@@ -242,6 +281,10 @@ const NotionEditorInner: React.FC<{
         onToggleViewMode={() => setViewMode(prev => (prev === 'continuous' ? 'paginated' : 'continuous'))}
         documentFont={documentFont}
         onDocumentFontChange={setDocumentFont}
+        remoteUsers={remoteUsers}
+        syncStatus={syncStatus}
+        followingUserId={followingUserId}
+        onFollowUser={setFollowingUserId}
       />
 
       <div
@@ -288,6 +331,8 @@ const NotionEditorInner: React.FC<{
                 dropTarget={dropTarget}
                 onHeightChange={handleHeightChange}
                 onClearSelection={clearSelection}
+                onBlockFocus={onBlockFocus}
+                uploadImage={config.uploadImage}
               />
             ))}
           </div>
@@ -320,9 +365,21 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   title = 'MiniNotion',
   dataSource: externalDataSource,
   config = {},
+  onBlockFocus,
+  remoteUsers,
+  syncStatus,
 }) => {
   const localDataSource = useLocalDataSource(initialBlocks, config.historyDebounceMs);
-  const dataSource = externalDataSource || localDataSource;
+  const noopSetMeta = useCallback(() => {}, []);
+  const emptyMeta = useMemo(() => ({}), []);
+
+  const rawSource = externalDataSource || localDataSource;
+  // Ensure meta/setMeta always exist (external data sources may omit them)
+  const dataSource: EditorDataSource = useMemo(() => ({
+    ...rawSource,
+    meta: rawSource.meta || emptyMeta,
+    setMeta: rawSource.setMeta || noopSetMeta,
+  }), [rawSource, emptyMeta, noopSetMeta]);
 
   return (
     <FontLoader fetchFonts={config.fetchFonts}>
@@ -333,6 +390,9 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           defaultViewMode={defaultViewMode}
           title={title}
           config={config}
+          onBlockFocus={onBlockFocus}
+          remoteUsers={remoteUsers}
+          syncStatus={syncStatus}
         />
       </EditorProvider>
     </FontLoader>

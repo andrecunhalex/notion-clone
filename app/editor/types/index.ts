@@ -66,6 +66,9 @@ export interface EditorDataSourceInterface {
   canRedo: boolean;
   /** Track selected IDs for history restoration (optional) */
   trackSelectedIds?: (ids: string[]) => void;
+  /** Document-level metadata (font, etc.) */
+  meta?: Record<string, unknown>;
+  setMeta?: (updates: Record<string, unknown>) => void;
 }
 
 // Editor configuration for customizable values
@@ -76,6 +79,8 @@ export interface EditorConfig {
   historyDebounceMs?: number;
   /** Custom font fetcher — replaces the default /api/fonts call */
   fetchFonts?: () => Promise<import('../fonts').FontFamily[]>;
+  /** Custom image uploader — returns URL. If not provided, images are stored as base64 */
+  uploadImage?: (file: File) => Promise<string | null>;
 }
 
 // Props do Editor principal (para reutilização)
@@ -88,4 +93,10 @@ export interface NotionEditorProps {
   dataSource?: EditorDataSourceInterface;
   /** Editor configuration for customizable values */
   config?: EditorConfig;
+  /** Called when the user focuses a block (for collaboration awareness) */
+  onBlockFocus?: (blockId: string | null) => void;
+  /** Remote users for presence in toolbar (collaboration mode) */
+  remoteUsers?: { id: string; name: string; color: string; cursor?: { blockId: string } | null }[];
+  /** Sync status for toolbar indicator */
+  syncStatus?: 'disconnected' | 'connecting' | 'connected' | 'synced';
 }

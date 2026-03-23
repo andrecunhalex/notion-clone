@@ -12,7 +12,7 @@ export { NotionEditor } from './NotionEditor';
 
 // Provider e data source (para integração com Yjs/Supabase)
 export { EditorProvider, useLocalDataSource, useEditorContext } from './EditorProvider';
-export type { EditorDataSource } from './EditorProvider';
+export type { EditorDataSource, DocumentMeta } from './EditorProvider';
 
 // Tipos
 export type {
@@ -42,3 +42,17 @@ export {
 
 // Constantes (cores, etc.)
 export { TEXT_COLORS, BG_COLORS } from './constants';
+
+// Colaboração em tempo real (Yjs + Supabase)
+export {
+  useCollaborativeEditor,
+  RemoteCursorsOverlay,
+  SyncStatusBadge,
+} from './collaboration';
+export type {
+  CollaborationConfig,
+  CollaborationUser,
+  RemoteUser,
+  SyncStatus,
+  CursorPosition,
+} from './collaboration';

@@ -8,6 +8,8 @@ interface ImageBlockProps {
   block: BlockData;
   updateBlock: (id: string, updates: Partial<BlockData>) => void;
   removeBlock: (id: string) => void;
+  /** Custom uploader — returns URL. Falls back to base64 if not provided */
+  uploadImage?: (file: File) => Promise<string | null>;
 }
 
 const DEFAULT_IMAGE_DATA: ImageData = {
@@ -16,11 +18,13 @@ const DEFAULT_IMAGE_DATA: ImageData = {
   alignment: 'center',
 };
 
-export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, removeBlock }) => {
+export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, removeBlock, uploadImage }) => {
   const imageData = block.imageData || DEFAULT_IMAGE_DATA;
   const [isHovered, setIsHovered] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [showToolbar, setShowToolbar] = useState(false);
+  // Local width during resize — only committed to block state on mouseup
+  const [resizeWidth, setResizeWidth] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const resizeStartRef = useRef<{ startX: number; startWidth: number; side: 'left' | 'right' } | null>(null);
   const didAutoOpen = useRef(false);
@@ -31,15 +35,31 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
     });
   }, [block.id, imageData, updateBlock]);
 
-  const handleFileSelect = useCallback((file: File) => {
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFileSelect = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) return;
+
+    // If uploader available (Supabase Storage), use it — stores URL instead of base64
+    if (uploadImage) {
+      setIsUploading(true);
+      const url = await uploadImage(file);
+      setIsUploading(false);
+      if (url) {
+        update({ src: url });
+        return;
+      }
+      // Fallback to base64 if upload fails
+    }
+
+    // Local mode: store as base64 data URL
     const reader = new FileReader();
     reader.onload = (e) => {
       const src = e.target?.result as string;
       update({ src });
     };
     reader.readAsDataURL(file);
-  }, [update]);
+  }, [update, uploadImage]);
 
   const handleUploadClick = useCallback(() => {
     const input = document.createElement('input');
@@ -87,14 +107,16 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
       startWidth: currentPixelWidth,
       side,
     };
+    setResizeWidth(imageData.width);
     setIsResizing(true);
   }, [imageData.width]);
 
-  // Store alignment in a ref so the resize effect doesn't re-register on alignment change
   const alignmentRef = useRef(imageData.alignment);
   alignmentRef.current = imageData.alignment;
   const updateRef = useRef(update);
   updateRef.current = update;
+  const resizeWidthRef = useRef(resizeWidth);
+  resizeWidthRef.current = resizeWidth;
 
   useEffect(() => {
     if (!isResizing) return;
@@ -123,12 +145,18 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
         }
 
         const newPercent = Math.max(10, Math.min(100, (newPixelWidth / containerWidth) * 100));
-        updateRef.current({ width: Math.round(newPercent) });
+        // Only update local visual state during drag — no sync broadcast
+        setResizeWidth(Math.round(newPercent));
       });
     };
 
     const handleMouseUp = () => {
       cancelAnimationFrame(rafId);
+      // Commit final width to block state (triggers Yjs sync once)
+      if (resizeWidthRef.current !== null) {
+        updateRef.current({ width: resizeWidthRef.current });
+      }
+      setResizeWidth(null);
       setIsResizing(false);
       resizeStartRef.current = null;
       document.body.style.userSelect = '';
@@ -152,7 +180,7 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
     right: 'justify-end',
   };
 
-  const widthPercent = imageData.width;
+  const widthPercent = resizeWidth ?? imageData.width;
 
   // Empty state - upload placeholder
   if (!imageData.src) {
@@ -162,15 +190,26 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
         className="my-2 flex justify-center"
       >
         <div
-          onClick={handleUploadClick}
+          onClick={isUploading ? undefined : handleUploadClick}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
-          className="w-full border-2 border-dashed border-gray-300 rounded-lg p-8 flex flex-col items-center gap-3 cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors"
+          className={`w-full border-2 border-dashed border-gray-300 rounded-lg p-8 flex flex-col items-center gap-3 transition-colors ${
+            isUploading ? 'opacity-60' : 'cursor-pointer hover:border-gray-400 hover:bg-gray-50'
+          }`}
         >
-          <ImagePlus size={40} className="text-gray-400" />
-          <div className="text-sm text-gray-500">
-            Clique para adicionar uma imagem ou arraste aqui
-          </div>
+          {isUploading ? (
+            <>
+              <div className="w-8 h-8 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+              <div className="text-sm text-gray-500">Enviando imagem...</div>
+            </>
+          ) : (
+            <>
+              <ImagePlus size={40} className="text-gray-400" />
+              <div className="text-sm text-gray-500">
+                Clique para adicionar uma imagem ou arraste aqui
+              </div>
+            </>
+          )}
         </div>
       </div>
     );

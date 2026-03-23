@@ -5,9 +5,11 @@ interface HistoryEntry<T> {
   selectedIds: string[];
 }
 
+type SetArg<T> = T | ((prev: T) => T);
+
 type UseHistoryReturn<T> = [
   T,                                              // state atual
-  (newState: T, currentSelectedIds?: string[]) => void, // set (saves current selection before advancing)
+  (newState: SetArg<T>, currentSelectedIds?: string[]) => void, // set (value or updater)
   () => string[],                                 // undo (returns restored selectedIds)
   () => string[],                                 // redo (returns restored selectedIds)
   boolean,                                        // canUndo
@@ -15,6 +17,7 @@ type UseHistoryReturn<T> = [
 ];
 
 const DEFAULT_DEBOUNCE_MS = 500;
+const MAX_ENTRIES = 100;
 
 export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBOUNCE_MS): UseHistoryReturn<T> => {
   const [state, setState] = useState<T>(initialState);
@@ -33,7 +36,15 @@ export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBO
   const lastEditTime = useRef(0);
   const isDebouncing = useRef(false);
 
-  const set = useCallback((newState: T, currentSelectedIds: string[] = []) => {
+  // Ref to read current state synchronously for updater functions
+  const stateRef = useRef(initialState);
+  stateRef.current = state;
+
+  const set = useCallback((newStateOrFn: SetArg<T>, currentSelectedIds: string[] = []) => {
+    const newState = typeof newStateOrFn === 'function'
+      ? (newStateOrFn as (prev: T) => T)(stateRef.current)
+      : newStateOrFn;
+
     const now = Date.now();
     const timeSinceLastEdit = now - lastEditTime.current;
     lastEditTime.current = now;
@@ -46,10 +57,10 @@ export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBO
         if (updated[p]) {
           updated[p] = { state: newState, selectedIds: currentSelectedIds };
         }
-        // Keep historyRef in sync for undo/redo between renders
         historyRef.current = updated;
         return updated;
       });
+      stateRef.current = newState;
       setState(newState);
       return;
     }
@@ -59,19 +70,24 @@ export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBO
     setHistory(prev => {
       const p = pointerRef.current;
       const updated = prev.slice(0, p + 1);
-      // Save the current selectedIds on the current entry
       if (updated[p]) {
         updated[p] = { ...updated[p], selectedIds: currentSelectedIds };
       }
-      // Push new entry
       updated.push({ state: newState, selectedIds: [] });
+
+      // Trim oldest entries if exceeding limit
+      if (updated.length > MAX_ENTRIES) {
+        const excess = updated.length - MAX_ENTRIES;
+        updated.splice(0, excess);
+      }
+
       const newPointer = updated.length - 1;
       pointerRef.current = newPointer;
       setPointer(newPointer);
-      // Keep historyRef in sync for undo/redo between renders
       historyRef.current = updated;
       return updated;
     });
+    stateRef.current = newState;
     setState(newState);
   }, []);
 
