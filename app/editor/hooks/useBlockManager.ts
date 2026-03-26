@@ -39,11 +39,15 @@ export const useBlockManager = ({ blocks, setBlocks }: UseBlockManagerProps) => 
     focusBlock(beforeId, 'start');
   }, []);
 
-  const addBlockWithContent = useCallback((afterId: string, content: string) => {
+  const addBlockWithContent = useCallback((afterId: string, content: string, sourceContent?: string) => {
     const b = blocksRef.current;
     const index = b.findIndex(bl => bl.id === afterId);
     const newBlock: BlockData = { id: generateId(), type: 'text', content };
     const newBlocks = [...b];
+    // Atomically update source block + insert new block in a single state update
+    if (sourceContent !== undefined) {
+      newBlocks[index] = { ...newBlocks[index], content: sourceContent };
+    }
     newBlocks.splice(index + 1, 0, newBlock);
     setBlocksRef.current(newBlocks);
     focusBlock(newBlock.id, 'start');

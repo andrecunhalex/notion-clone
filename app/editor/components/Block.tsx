@@ -17,7 +17,7 @@ interface BlockProps {
   updateBlock: (id: string, updates: Partial<BlockData>) => void;
   addBlock: (afterId: string) => void;
   addBlockBefore: (beforeId: string) => void;
-  addBlockWithContent: (afterId: string, content: string) => void;
+  addBlockWithContent: (afterId: string, content: string, sourceContent?: string) => void;
   addListBlock: (afterId: string, type: BlockType, indent: number) => void;
   removeBlock: (id: string) => void;
   mergeWithPrevious: (id: string) => void;
@@ -125,10 +125,29 @@ const BlockInner: React.FC<BlockProps> = ({
       return;
     }
     const el = document.getElementById(`editable-${block.id}`);
-    if (el && el.innerHTML !== block.content) {
+    if (!el) return;
+
+    // Sanitize nested contentEditable elements that corrupt cursor tracking
+    let content = block.content;
+    if (content.includes('contenteditable')) {
+      const temp = document.createElement('div');
+      temp.innerHTML = content;
+      temp.querySelectorAll('[contenteditable]').forEach(n => n.removeAttribute('contenteditable'));
+      temp.querySelectorAll('[id^="editable-"]').forEach(n => n.removeAttribute('id'));
+      temp.querySelectorAll('[data-block-id]').forEach(n => n.removeAttribute('data-block-id'));
+      temp.querySelectorAll('.drag-handle').forEach(n => n.remove());
+      content = temp.innerHTML;
+      // Persist sanitized content back to state
+      if (content !== block.content) {
+        isLocalEditRef.current = true;
+        updateBlock(block.id, { content });
+      }
+    }
+
+    if (el.innerHTML !== content) {
       const isFocused = document.activeElement === el;
-      el.innerHTML = block.content;
-      if (isFocused && block.content) {
+      el.innerHTML = content;
+      if (isFocused && content) {
         const range = document.createRange();
         const sel = window.getSelection();
         range.selectNodeContents(el);
@@ -137,7 +156,7 @@ const BlockInner: React.FC<BlockProps> = ({
         sel?.addRange(range);
       }
     }
-  }, [block.content, block.id, block.type]);
+  }, [block.content, block.id, block.type, updateBlock]);
 
   const handleKeyDown = useBlockKeyboard({
     block, isLastBlock, updateBlock, addBlock, addBlockBefore,
@@ -146,6 +165,8 @@ const BlockInner: React.FC<BlockProps> = ({
 
   const handleInput = useCallback((e: React.FormEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
+    // Guard: ignore input events that bubbled from a nested contentEditable
+    if (e.target !== e.currentTarget) return;
     isLocalEditRef.current = true;
     el.classList.toggle('is-empty', isContentEmpty(el.innerHTML));
     updateBlock(block.id, { content: el.innerHTML });

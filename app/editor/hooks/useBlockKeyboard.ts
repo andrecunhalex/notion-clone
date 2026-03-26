@@ -9,7 +9,7 @@ interface UseBlockKeyboardProps {
   updateBlock: (id: string, updates: Partial<BlockData>) => void;
   addBlock: (afterId: string) => void;
   addBlockBefore: (beforeId: string) => void;
-  addBlockWithContent: (afterId: string, content: string) => void;
+  addBlockWithContent: (afterId: string, content: string, sourceContent?: string) => void;
   addListBlock: (afterId: string, type: BlockType, indent: number) => void;
   removeBlock: (id: string) => void;
   mergeWithPrevious: (id: string) => void;
@@ -170,8 +170,8 @@ export const useBlockKeyboard = ({
           const temp = document.createElement('div');
           temp.appendChild(fragment);
           const afterContent = temp.innerHTML;
-          updateBlock(block.id, { content: el.innerHTML });
-          addBlockWithContent(block.id, afterContent);
+          // Single atomic update: update source block content + insert new block
+          addBlockWithContent(block.id, afterContent, el.innerHTML);
         } else {
           addBlock(block.id);
         }

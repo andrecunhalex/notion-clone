@@ -144,14 +144,22 @@ export function useCollaborativeEditor({
         const anchorEl = sel.anchorNode?.nodeType === Node.ELEMENT_NODE
           ? sel.anchorNode as Element
           : sel.anchorNode?.parentElement;
-        const editable = anchorEl?.closest('[id^="editable-"]');
 
+        // Use data-block-id wrapper as anchor to avoid picking up
+        // a nested contentEditable that shares the same id prefix
+        const blockWrapper = anchorEl?.closest('[data-block-id]');
+        if (!blockWrapper) {
+          provider.trackCursor(null);
+          return;
+        }
+
+        const blockId = blockWrapper.getAttribute('data-block-id')!;
+        const editable = blockWrapper.querySelector(`#editable-${blockId}`) as Element | null;
         if (!editable) {
           provider.trackCursor(null);
           return;
         }
 
-        const blockId = editable.id.replace('editable-', '');
         const anchorOffset = getCharOffset(editable, sel.anchorNode, sel.anchorOffset);
         const focusOffset = sel.isCollapsed
           ? anchorOffset

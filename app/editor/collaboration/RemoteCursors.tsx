@@ -8,7 +8,17 @@ import { RemoteUser, CursorPosition } from './types';
 // ---------------------------------------------------------------------------
 
 function resolveOffset(editableEl: Element, charOffset: number): { node: Node; offset: number } | null {
-  const walker = document.createTreeWalker(editableEl, NodeFilter.SHOW_TEXT);
+  // Skip text nodes inside nested contentEditable elements (corrupted content)
+  const walker = document.createTreeWalker(editableEl, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      let parent = node.parentElement;
+      while (parent && parent !== editableEl) {
+        if (parent.hasAttribute('contenteditable')) return NodeFilter.FILTER_REJECT;
+        parent = parent.parentElement;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
   let remaining = charOffset;
   while (walker.nextNode()) {
     const textNode = walker.currentNode;
@@ -98,7 +108,10 @@ const RemoteUserCursor: React.FC<{ user: RemoteUser }> = memo(({ user }) => {
       return;
     }
 
-    const editableEl = document.getElementById(`editable-${cursor.blockId}`);
+    // Use data-block-id wrapper to find the correct editable element,
+    // avoiding nested contentEditable duplicates inside corrupted content
+    const wrapper = document.querySelector(`[data-block-id="${cursor.blockId}"]`);
+    const editableEl = wrapper?.querySelector(`#editable-${cursor.blockId}`) as HTMLElement | null;
     if (!editableEl) {
       setVisuals({ cursorRect: null, selectionRects: [] });
       return;

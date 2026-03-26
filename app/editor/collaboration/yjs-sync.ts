@@ -115,7 +115,7 @@ export class YjsDocSync {
     return () => this.yBlocks.unobserveDeep(observer);
   }
 
-  /** Sync React blocks → Y.Doc. Two paths: fast (content-only) or full rebuild (structure change) */
+  /** Sync React blocks → Y.Doc with minimal Yjs operations for clean undo/redo */
   private _applyDiff(inputBlocks: BlockData[]) {
     const yArr = this.yBlocks;
 
@@ -127,25 +127,58 @@ export class YjsDocSync {
       return true;
     });
 
-    // Check if structure (IDs / order) changed
+    // Build current ID list
     const currentIds: string[] = [];
     for (let i = 0; i < yArr.length; i++) {
       currentIds.push(yArr.get(i).get('id') as string);
     }
     const newIds = newBlocks.map(b => b.id);
 
-    const structureChanged =
-      currentIds.length !== newIds.length ||
-      currentIds.some((id, i) => id !== newIds[i]);
-
-    if (!structureChanged) {
-      // Fast path: only content changed — update Y.Maps in place (minimal Yjs ops)
+    // Fast path: same structure — only update content in place
+    if (
+      currentIds.length === newIds.length &&
+      currentIds.every((id, i) => id === newIds[i])
+    ) {
       for (let i = 0; i < newBlocks.length; i++) {
         this._updateYMap(yArr.get(i), newBlocks[i]);
       }
+      return;
+    }
+
+    // Check if this is a simple add/remove (no reorder of existing items).
+    // This is the common case (Enter, Backspace, delete block) and produces
+    // clean, targeted Yjs operations that UndoManager can reverse correctly.
+    const currentIdSet = new Set(currentIds);
+    const newIdSet = new Set(newIds);
+    const keptCurrent = currentIds.filter(id => newIdSet.has(id));
+    const keptNew = newIds.filter(id => currentIdSet.has(id));
+    const isSimpleChange =
+      keptCurrent.length === keptNew.length &&
+      keptCurrent.every((id, i) => id === keptNew[i]);
+
+    if (isSimpleChange) {
+      // 1. Delete removed blocks (reverse order to preserve indices)
+      for (let i = currentIds.length - 1; i >= 0; i--) {
+        if (!newIdSet.has(currentIds[i])) {
+          yArr.delete(i, 1);
+        }
+      }
+
+      // 2. Insert new blocks at correct positions
+      for (let i = 0; i < newBlocks.length; i++) {
+        if (!currentIdSet.has(newBlocks[i].id)) {
+          const yMap = new Y.Map<unknown>();
+          blockToYMap(newBlocks[i], yMap);
+          yArr.insert(i, [yMap]);
+        }
+      }
+
+      // 3. Update content of all blocks
+      for (let i = 0; i < yArr.length; i++) {
+        this._updateYMap(yArr.get(i), newBlocks[i]);
+      }
     } else {
-      // Structure changed (add/remove/reorder) — rebuild the array
-      // This is safe and correct: Yjs diff engine handles the rest efficiently
+      // Complex reorder (drag & drop) — full rebuild as fallback
       if (yArr.length > 0) yArr.delete(0, yArr.length);
       for (const block of newBlocks) {
         const yMap = new Y.Map<unknown>();
