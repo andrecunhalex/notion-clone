@@ -35,11 +35,13 @@ const CURSOR_DEBOUNCE_MS = 300;
 // SupabaseProvider — optimized for Supabase Pro limits
 //
 // Key optimizations vs naive approach:
-// 1. Yjs updates are BATCHED (300ms window) before broadcast → fewer messages
-// 2. Cursor uses Broadcast (500 msg/sec limit) instead of Presence (50/sec)
-// 3. Presence only tracks online/offline (rarely changes)
-// 4. DB save debounce increased to 5s
-// 5. Cursor deduplication: only sends when position actually changed
+// 1. SOLO MODE: no broadcasts (Yjs updates or cursors) when user is alone.
+//    When a peer joins, full state is sent so they catch up instantly.
+// 2. Yjs updates are BATCHED (300ms window) before broadcast → fewer messages
+// 3. Cursor uses Broadcast (500 msg/sec limit) instead of Presence (50/sec)
+// 4. Presence only tracks online/offline (rarely changes)
+// 5. DB save debounce increased to 5s
+// 6. Cursor deduplication: only sends when position actually changed
 // ---------------------------------------------------------------------------
 
 export class SupabaseProvider {
@@ -67,6 +69,9 @@ export class SupabaseProvider {
   // beforeunload handler reference
   private _beforeUnloadHandler: (() => void) | null = null;
 
+  // Solo-mode: skip broadcasts when no one else is in the document
+  private _hasRemotePeers = false;
+
   // Remote users: merge Presence (online/offline) + Broadcast (cursor position)
   private _presenceUsers = new Map<string, { name: string; color: string }>();
   private _remoteCursors = new Map<string, CursorPosition | null>();
@@ -88,9 +93,9 @@ export class SupabaseProvider {
   onStatusChange(cb: (status: SyncStatus) => void) { this._onStatusChange = cb; }
   onRemoteUsersChange(cb: (users: RemoteUser[]) => void) { this._onRemoteUsersChange = cb; }
 
-  /** Debounced + deduplicated cursor broadcast */
+  /** Debounced + deduplicated cursor broadcast (skipped in solo mode) */
   trackCursor(cursor: CursorPosition | null) {
-    if (this._destroyed) return;
+    if (this._destroyed || !this._hasRemotePeers) return;
 
     const json = cursor ? JSON.stringify(cursor) : '';
     // Skip if position didn't change
@@ -100,6 +105,7 @@ export class SupabaseProvider {
     // Debounce cursor broadcasts
     if (this._cursorTimer) clearTimeout(this._cursorTimer);
     this._cursorTimer = setTimeout(() => {
+      if (!this._hasRemotePeers) return;
       this.channel.send({
         type: 'broadcast',
         event: 'cursor',
@@ -200,6 +206,11 @@ export class SupabaseProvider {
     if (this._destroyed) return;
     if (origin === 'remote' || origin === 'supabase-load') return;
 
+    // Always persist to DB, but only broadcast when peers are present
+    this._debouncedSave();
+
+    if (!this._hasRemotePeers) return;
+
     this._pendingUpdates.push(update);
 
     if (!this._batchTimer) {
@@ -207,8 +218,6 @@ export class SupabaseProvider {
         this._flushBatch();
       }, BROADCAST_BATCH_MS);
     }
-
-    this._debouncedSave();
   };
 
   private _flushBatch() {
@@ -284,9 +293,10 @@ export class SupabaseProvider {
     }
   }
 
-  /** Sync presence state (online/offline only) */
+  /** Sync presence state and toggle solo mode */
   private _syncPresence() {
     const state = this.channel.presenceState();
+    const hadPeers = this._hasRemotePeers;
     this._presenceUsers.clear();
 
     for (const presences of Object.values(state)) {
@@ -300,6 +310,18 @@ export class SupabaseProvider {
       }
     }
 
+    this._hasRemotePeers = this._presenceUsers.size > 0;
+
+    // Peer just joined: send full state so they catch up on edits made in solo mode
+    if (this._hasRemotePeers && !hadPeers) {
+      this._broadcastFullState();
+    }
+
+    // Reset cursor dedup when entering solo mode so next collab session starts fresh
+    if (!this._hasRemotePeers && hadPeers) {
+      this._lastCursorJson = '';
+    }
+
     // Clean up cursors for users who left
     for (const userId of this._remoteCursors.keys()) {
       if (!this._presenceUsers.has(userId)) {
@@ -308,6 +330,20 @@ export class SupabaseProvider {
     }
 
     this._emitRemoteUsers();
+  }
+
+  /** Send full Yjs state so a newly-joined peer can catch up */
+  private _broadcastFullState() {
+    try {
+      const fullState = Y.encodeStateAsUpdate(this.doc);
+      this.channel.send({
+        type: 'broadcast',
+        event: 'yjs-update',
+        payload: { update: uint8ToBase64(fullState) },
+      });
+    } catch {
+      // Non-critical — peer will load from DB as fallback
+    }
   }
 
   /** Merge presence (who's online) + cursor broadcasts (where they are) */
