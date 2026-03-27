@@ -26,7 +26,7 @@ function focusAndScroll(target: HTMLElement, sel: Selection, collapseToEnd: bool
 
 /** Allowed tags for editable content — everything else is stripped */
 const ALLOWED_TAGS = new Set([
-  'B', 'STRONG', 'I', 'EM', 'U', 'S', 'BR', 'SPAN', 'SUB', 'SUP', 'A',
+  'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL', 'BR', 'SPAN', 'SUB', 'SUP', 'A', 'FONT',
 ]);
 
 /** Sanitize HTML from contentEditable: keep only safe formatting tags */
@@ -46,10 +46,13 @@ function sanitizeHtml(html: string): string {
           node.removeChild(el);
           continue;
         }
-        // Remove dangerous attributes (event handlers, scripts)
+        // Remove dangerous attributes (event handlers, script URLs)
+        // Keep: style, color, class, href (non-javascript), face, size
         for (const attr of Array.from(el.attributes)) {
           const name = attr.name.toLowerCase();
-          if (name.startsWith('on') || name === 'href' && attr.value.trim().toLowerCase().startsWith('javascript')) {
+          if (name.startsWith('on')) {
+            el.removeAttribute(attr.name);
+          } else if (name === 'href' && attr.value.trim().toLowerCase().startsWith('javascript')) {
             el.removeAttribute(attr.name);
           }
         }
@@ -260,6 +263,16 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
       if (el.textContent !== num) el.textContent = num;
     });
   }, [data.templateId, JSON.stringify(values), autoNumber, template, saveValues, handleZoneKeyDown]);
+
+  // Apply text alignment to all editable zones
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const align = block.align || 'left';
+    container.querySelectorAll<HTMLElement>('[data-editable]').forEach(el => {
+      el.style.textAlign = align;
+    });
+  }, [block.align]);
 
   // Clean up built state on unmount
   useEffect(() => {

@@ -15,7 +15,8 @@
   min-height: 24px;
 }
 
-.editable-block a[href] {
+.editable-block a[href],
+[data-editable] a[href] {
   cursor: pointer;
 }
 

@@ -676,7 +676,7 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
       const target = e.target as HTMLElement;
       const anchor = target.closest('a') as HTMLAnchorElement | null;
       if (!anchor) return;
-      const editable = anchor.closest('[id^="editable-"], [data-table-cell]');
+      const editable = anchor.closest('[id^="editable-"], [data-table-cell], [data-editable]');
       if (!editable) return;
 
       const refId = anchor.getAttribute('data-block-ref');
