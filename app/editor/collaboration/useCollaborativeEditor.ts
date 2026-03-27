@@ -25,6 +25,34 @@ function getCharOffset(editableEl: Element, node: Node | null, offset: number): 
   }
 }
 
+function restoreCursorAtOffset(el: Element, targetOffset: number) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let charCount = 0;
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    const nodeLen = node.textContent?.length || 0;
+    if (charCount + nodeLen >= targetOffset) {
+      const range = document.createRange();
+      range.setStart(node, Math.min(targetOffset - charCount, nodeLen));
+      range.collapse(true);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      return;
+    }
+    charCount += nodeLen;
+  }
+  // Fallback: end of content
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+}
+
+interface CursorMeta { blockId: string; charOffset: number }
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -214,35 +242,81 @@ export function useCollaborativeEditor({
       trackedOrigins: new Set(['local']),
     });
     undoManagerRef.current = um;
+
+    // Save cursor position on each undo stack entry for precise restoration
+    um.on('stack-item-added', (event: { stackItem: { meta: Map<string, unknown> } }) => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const anchorEl = sel.anchorNode?.nodeType === Node.ELEMENT_NODE
+        ? sel.anchorNode as Element
+        : sel.anchorNode?.parentElement;
+      const blockWrapper = anchorEl?.closest('[data-block-id]');
+      if (!blockWrapper) return;
+      const blockId = blockWrapper.getAttribute('data-block-id')!;
+      const editable = blockWrapper.querySelector(`#editable-${blockId}`) as Element | null;
+      if (!editable) return;
+      const charOffset = getCharOffset(editable, sel.anchorNode, sel.anchorOffset);
+      event.stackItem.meta.set('cursor', { blockId, charOffset } as CursorMeta);
+    });
+
     return () => um.destroy();
   }, [config.documentId]);
 
-  const undo = useCallback((): string[] => {
-    undoManagerRef.current?.undo();
-    const newBlocks = syncRef.current?.getBlocks() || [];
-    setBlocksState(newBlocks);
-    // Also refresh meta
+  const refreshMeta = useCallback(() => {
     const yMeta = yMetaRef.current;
     if (yMeta) {
       const obj: DocumentMeta = {};
       yMeta.forEach((value, key) => { obj[key] = value; });
       setMetaState(obj);
     }
-    return selectedIdsRef.current;
   }, []);
 
-  const redo = useCallback((): string[] => {
-    undoManagerRef.current?.redo();
+  const undo = useCallback((): string[] => {
+    const um = undoManagerRef.current;
+    // Read cursor metadata from the stack item we're about to undo
+    let cursor: CursorMeta | null = null;
+    if (um && um.undoStack.length > 0) {
+      cursor = um.undoStack[um.undoStack.length - 1].meta.get('cursor') as CursorMeta ?? null;
+    }
+    // Suppress observer so we don't get a double setBlocksState
+    syncRef.current?.suppressRemote(() => { um?.undo(); });
     const newBlocks = syncRef.current?.getBlocks() || [];
     setBlocksState(newBlocks);
-    const yMeta = yMetaRef.current;
-    if (yMeta) {
-      const obj: DocumentMeta = {};
-      yMeta.forEach((value, key) => { obj[key] = value; });
-      setMetaState(obj);
+    refreshMeta();
+    // Restore cursor position
+    if (cursor) {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`editable-${cursor!.blockId}`);
+        if (el) {
+          el.focus({ preventScroll: true });
+          restoreCursorAtOffset(el, cursor!.charOffset);
+        }
+      });
     }
     return selectedIdsRef.current;
-  }, []);
+  }, [refreshMeta]);
+
+  const redo = useCallback((): string[] => {
+    const um = undoManagerRef.current;
+    let cursor: CursorMeta | null = null;
+    if (um && um.redoStack.length > 0) {
+      cursor = um.redoStack[um.redoStack.length - 1].meta.get('cursor') as CursorMeta ?? null;
+    }
+    syncRef.current?.suppressRemote(() => { um?.redo(); });
+    const newBlocks = syncRef.current?.getBlocks() || [];
+    setBlocksState(newBlocks);
+    refreshMeta();
+    if (cursor) {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`editable-${cursor!.blockId}`);
+        if (el) {
+          el.focus({ preventScroll: true });
+          restoreCursorAtOffset(el, cursor!.charOffset);
+        }
+      });
+    }
+    return selectedIdsRef.current;
+  }, [refreshMeta]);
 
   const canUndo = undoManagerRef.current ? undoManagerRef.current.undoStack.length > 0 : false;
   const canRedo = undoManagerRef.current ? undoManagerRef.current.redoStack.length > 0 : false;

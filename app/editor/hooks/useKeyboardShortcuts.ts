@@ -50,9 +50,22 @@ export const useKeyboardShortcuts = ({
       // Undo/Redo
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault();
+        // Remember which block had focus so we can restore it after React re-renders
         const active = document.activeElement as HTMLElement;
-        if (active?.isContentEditable) active.blur();
+        const blockWrapper = active?.closest?.('[data-block-id]');
+        const focusedBlockId = blockWrapper?.getAttribute('data-block-id') || null;
+
         e.shiftKey ? redoRef.current() : undoRef.current();
+
+        // Re-focus the block after React re-render (if it still exists)
+        if (focusedBlockId) {
+          requestAnimationFrame(() => {
+            const el = document.getElementById(`editable-${focusedBlockId}`);
+            if (el && document.activeElement !== el) {
+              el.focus({ preventScroll: true });
+            }
+          });
+        }
         return;
       }
 

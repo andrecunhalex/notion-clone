@@ -90,22 +90,18 @@ export const useBlockManager = ({ blocks, setBlocks }: UseBlockManagerProps) => 
     if (index <= 0) return;
     const prevBlock = b[index - 1];
 
-    // If previous block is a divider, swap: move current block above the divider
+    // If previous block is a divider, try to merge with the block above it
     if (prevBlock.type === 'divider') {
-      const newBlocks = [...b];
-      newBlocks[index] = prevBlock;
-      newBlocks[index - 1] = b[index];
-      setBlocksRef.current(newBlocks);
-
       if (index - 2 >= 0) {
-        const aboveBlock = newBlocks[index - 2];
+        const aboveBlock = b[index - 2];
         if (aboveBlock.type !== 'divider' && aboveBlock.type !== 'table' && aboveBlock.type !== 'image') {
-          const currentBlock = newBlocks[index - 1];
+          // Merge current block into above-divider block in a single atomic update
+          const currentBlock = b[index];
           const mergedContent = (aboveBlock.content || '') + (currentBlock.content || '');
-          const mergedBlocks = [...newBlocks];
-          mergedBlocks[index - 2] = { ...aboveBlock, content: mergedContent };
-          mergedBlocks.splice(index - 1, 1);
-          setBlocksRef.current(mergedBlocks);
+          const newBlocks = [...b];
+          newBlocks[index - 2] = { ...aboveBlock, content: mergedContent };
+          newBlocks.splice(index, 1); // Remove current block, keep divider
+          setBlocksRef.current(newBlocks);
           setTimeout(() => {
             const el = document.getElementById(`editable-${aboveBlock.id}`);
             if (el) {
@@ -117,6 +113,11 @@ export const useBlockManager = ({ blocks, setBlocks }: UseBlockManagerProps) => 
           return;
         }
       }
+      // No mergeable block above — just swap current above divider
+      const newBlocks = [...b];
+      newBlocks[index] = prevBlock;
+      newBlocks[index - 1] = b[index];
+      setBlocksRef.current(newBlocks);
       focusBlock(id, 'start');
       return;
     }

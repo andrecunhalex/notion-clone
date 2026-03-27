@@ -79,11 +79,17 @@ export class YjsDocSync {
 
   /** Set blocks from React state → Y.Doc (local edit) */
   setBlocks(blocks: BlockData[]) {
+    this.suppressRemote(() => {
+      this.doc.transact(() => {
+        this._applyDiff(blocks);
+      }, 'local');
+    });
+  }
+
+  /** Temporarily suppress the remote observer (used by setBlocks and undo/redo) */
+  suppressRemote(fn: () => void) {
     this._suppressRemote = true;
-    this.doc.transact(() => {
-      this._applyDiff(blocks);
-    }, 'local');
-    this._suppressRemote = false;
+    try { fn(); } finally { this._suppressRemote = false; }
   }
 
   /** Initialize the doc with blocks if it's empty */

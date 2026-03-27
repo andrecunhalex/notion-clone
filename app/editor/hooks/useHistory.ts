@@ -36,6 +36,9 @@ export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBO
   const lastEditTime = useRef(0);
   const isDebouncing = useRef(false);
 
+  // Track block structure fingerprint to break debounce on structural changes
+  const lastBlockFingerprintRef = useRef('');
+
   // Ref to read current state synchronously for updater functions
   const stateRef = useRef(initialState);
   stateRef.current = state;
@@ -49,8 +52,19 @@ export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBO
     const timeSinceLastEdit = now - lastEditTime.current;
     lastEditTime.current = now;
 
-    // If within debounce window, update the current entry in-place instead of pushing new
-    if (isDebouncing.current && timeSinceLastEdit < debounceMs) {
+    // Detect structural changes (add/remove/reorder blocks) to break debounce
+    let structureChanged = false;
+    if (newState && typeof newState === 'object' && 'blocks' in (newState as Record<string, unknown>)) {
+      const blocks = (newState as unknown as { blocks: { id: string }[] }).blocks;
+      const fingerprint = blocks.map(b => b.id).join(',');
+      if (fingerprint !== lastBlockFingerprintRef.current) {
+        structureChanged = lastBlockFingerprintRef.current !== ''; // skip first call
+        lastBlockFingerprintRef.current = fingerprint;
+      }
+    }
+
+    // If within debounce window AND no structural change, merge into current entry
+    if (isDebouncing.current && timeSinceLastEdit < debounceMs && !structureChanged) {
       setHistory(prev => {
         const p = pointerRef.current;
         const updated = [...prev];
