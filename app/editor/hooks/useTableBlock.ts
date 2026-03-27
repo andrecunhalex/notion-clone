@@ -384,8 +384,18 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
 
   useEffect(() => {
     if (!contextMenu) return;
-    const close = () => { setContextMenu(null); setColorSubmenu(false); };
-    window.addEventListener('click', close);
+    const close = (e: MouseEvent) => {
+      // Don't close when clicking inside the menu itself
+      const menuEl = document.querySelector('[data-table-context-menu]');
+      if (menuEl && menuEl.contains(e.target as Node)) return;
+      setContextMenu(null);
+      setColorSubmenu(false);
+    };
+    // Delay listener so the same right-click/ctrl-click that opened the menu
+    // doesn't immediately close it (macOS generates click + contextmenu)
+    const raf = requestAnimationFrame(() => {
+      window.addEventListener('mousedown', close);
+    });
 
     // Block page scroll while context menu is open
     const origOverflow = document.documentElement.style.overflow;
@@ -399,7 +409,8 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
     window.addEventListener('touchmove', preventScroll, { passive: false });
 
     return () => {
-      window.removeEventListener('click', close);
+      cancelAnimationFrame(raf);
+      window.removeEventListener('mousedown', close);
       document.documentElement.style.overflow = origOverflow;
       window.removeEventListener('wheel', preventScroll);
       window.removeEventListener('touchmove', preventScroll);

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useLayoutEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus, Trash2, Palette, ChevronRight, ArrowUp, ArrowDown,
   Copy, XCircle, TableProperties
@@ -153,7 +154,6 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
                       backgroundColor: cell.bgColor || (isHeader ? '#F9FAFB' : 'white'),
                       boxShadow: selShadow,
                     }}
-                    onContextMenu={e => handleContextMenu(e, rowIdx, colIdx)}
                     onMouseDown={e => handleCellMouseDown(e, rowIdx, colIdx)}
                     onMouseEnter={() => handleCellMouseEnter(rowIdx, colIdx)}
                   >
@@ -163,6 +163,7 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
                       suppressContentEditableWarning
                       className="outline-none px-2 py-1.5 text-sm min-h-7 wrap-break-word"
                       style={{ color: cell.textColor || '#374151' }}
+                      onContextMenu={e => handleContextMenu(e, rowIdx, colIdx)}
                       onInput={e => handleCellInput(rowIdx, colIdx, e.currentTarget as HTMLDivElement)}
                       onBlur={e => handleCellBlur(rowIdx, colIdx, e.currentTarget)}
                       onKeyDown={e => handleCellKeyDown(e, rowIdx, colIdx)}
@@ -206,8 +207,8 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
         </button>
       )}
 
-      {/* Context menu */}
-      {contextMenu && (
+      {/* Context menu — rendered via portal to escape transform containing block */}
+      {contextMenu && createPortal(
         <div
           ref={contextMenuRef}
           data-table-context-menu
@@ -369,7 +370,8 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
             <Trash2 size={14} />
             Deletar coluna
           </button>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
