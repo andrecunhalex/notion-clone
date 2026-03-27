@@ -70,9 +70,10 @@ interface DesignBlockProps {
   block: BlockData;
   updateBlock: (id: string, updates: Partial<BlockData>) => void;
   uploadImage?: (file: File) => Promise<string | null>;
+  autoNumber?: string;
 }
 
-export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, uploadImage }) => {
+export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, uploadImage, autoNumber }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeSwapKey = useRef<string | null>(null);
@@ -198,6 +199,11 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
         el.src = values[key] ?? template.defaults[key] ?? '';
       });
 
+      // Inject auto-number (read-only, computed from document position)
+      div.querySelectorAll<HTMLElement>('[data-autonumber]').forEach(el => {
+        el.textContent = autoNumber ?? '';
+      });
+
       container.innerHTML = div.innerHTML;
 
       // Attach listeners ONCE
@@ -247,7 +253,13 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
         }
       });
     }
-  }, [data.templateId, JSON.stringify(values), template, saveValues, handleZoneKeyDown]);
+
+    // Always update auto-number (cheap, no rebuild needed)
+    container.querySelectorAll<HTMLElement>('[data-autonumber]').forEach(el => {
+      const num = autoNumber ?? '';
+      if (el.textContent !== num) el.textContent = num;
+    });
+  }, [data.templateId, JSON.stringify(values), autoNumber, template, saveValues, handleZoneKeyDown]);
 
   // Clean up built state on unmount
   useEffect(() => {

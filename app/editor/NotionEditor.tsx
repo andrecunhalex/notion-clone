@@ -12,7 +12,7 @@ import {
   usePagination
 } from './hooks';
 import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar } from './components';
-import { getTemplate } from './components/designBlocks';
+import { getTemplate, DESIGN_TEMPLATES } from './components/designBlocks';
 import { FontLoader } from './components/FontLoader';
 import { SYSTEM_FONTS } from './fonts';
 import { EditorProvider, EditorDataSource, useLocalDataSource } from './EditorProvider';
@@ -250,6 +250,27 @@ const NotionEditorInner: React.FC<{
     return map;
   }, [blocks]);
 
+  // Pre-compute auto-numbers for design blocks (heading: 1,2,3  subheading: 1.1,1.2,2.1)
+  const designAutoNumbers = useMemo(() => {
+    const map: Record<string, string> = {};
+    let headingCount = 0;
+    let subCount = 0;
+    for (const block of blocks) {
+      if (block.type !== 'design_block' || !block.designBlockData) continue;
+      const tpl = getTemplate(block.designBlockData.templateId);
+      if (!tpl?.autonumber) continue;
+      if (tpl.autonumber === 'heading') {
+        headingCount++;
+        subCount = 0;
+        map[block.id] = String(headingCount);
+      } else if (tpl.autonumber === 'subheading') {
+        subCount++;
+        map[block.id] = `${headingCount || 1}.${subCount}`;
+      }
+    }
+    return map;
+  }, [blocks]);
+
   const lastBlockId = blocks[blocks.length - 1]?.id;
 
   // Follow mode: auto-scroll to the followed user's cursor block
@@ -469,6 +490,7 @@ const NotionEditorInner: React.FC<{
                   onClearSelection={clearSelection}
                   onBlockFocus={onBlockFocus}
                   uploadImage={config.uploadImage}
+                  autoNumber={designAutoNumbers[block.id]}
                 />
               ))}
             </div>

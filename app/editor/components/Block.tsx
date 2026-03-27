@@ -32,6 +32,7 @@ interface BlockProps {
   onClearSelection: () => void;
   onBlockFocus?: (blockId: string | null) => void;
   uploadImage?: (file: File) => Promise<string | null>;
+  autoNumber?: string;
 }
 
 const BLOCK_STYLES: Record<string, string> = {
@@ -91,6 +92,7 @@ const BlockInner: React.FC<BlockProps> = ({
   onClearSelection,
   onBlockFocus,
   uploadImage,
+  autoNumber,
 }) => {
   const internalRef = useRef<HTMLDivElement>(null);
   // Track whether the user is actively editing this block's contentEditable
@@ -251,6 +253,7 @@ const BlockInner: React.FC<BlockProps> = ({
             block={block}
             updateBlock={updateBlock}
             uploadImage={uploadImage}
+            autoNumber={autoNumber}
           />
         ) : isDivider ? (
           <div className="py-2">
@@ -308,6 +311,7 @@ export const Block = memo(BlockInner, (prev, next) => {
     prev.isSelected === next.isSelected &&
     prev.listNumber === next.listNumber &&
     prev.isLastBlock === next.isLastBlock &&
+    prev.autoNumber === next.autoNumber &&
     prev.dropTarget?.id === next.dropTarget?.id &&
     prev.dropTarget?.position === next.dropTarget?.position
   );

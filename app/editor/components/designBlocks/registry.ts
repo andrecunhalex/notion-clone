@@ -15,6 +15,8 @@ export interface DesignBlockTemplate {
   name: string;
   html: string;
   defaults: Record<string, string>;
+  /** If set, the block receives auto-computed numbering based on document position */
+  autonumber?: 'heading' | 'subheading';
 }
 
 export const DESIGN_TEMPLATES: DesignBlockTemplate[] = [
@@ -88,6 +90,46 @@ export const DESIGN_TEMPLATES: DesignBlockTemplate[] = [
         <p
           data-editable="body"
           class="text-sm text-gray-700 leading-relaxed py-3 pr-4 flex-1"
+        ></p>
+      </div>
+    `,
+  },
+  {
+    id: 'numbered-heading',
+    name: 'Título Numerado',
+    autonumber: 'heading',
+    defaults: {
+      title: 'Título da seção',
+    },
+    html: `
+      <div class="flex items-center gap-4 py-3 border-b-2 border-purple-400">
+        <span
+          data-autonumber
+          class="text-4xl font-bold text-purple-600 shrink-0 min-w-[40px]"
+        ></span>
+        <p
+          data-editable="title"
+          class="text-xl font-semibold text-gray-900 flex-1"
+        ></p>
+      </div>
+    `,
+  },
+  {
+    id: 'numbered-subheading',
+    name: 'Subtítulo Numerado',
+    autonumber: 'subheading',
+    defaults: {
+      title: 'Subtítulo da seção',
+    },
+    html: `
+      <div class="flex items-center gap-3 py-2 pl-4 border-l-3 border-purple-300 ml-2">
+        <span
+          data-autonumber
+          class="text-lg font-bold text-purple-400 shrink-0 min-w-[36px]"
+        ></span>
+        <p
+          data-editable="title"
+          class="text-base font-medium text-gray-700 flex-1"
         ></p>
       </div>
     `,
