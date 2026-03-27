@@ -182,7 +182,10 @@ export function useCollaborativeEditor({
         }
 
         const blockId = blockWrapper.getAttribute('data-block-id')!;
-        const editable = blockWrapper.querySelector(`#editable-${blockId}`) as Element | null;
+        // Find the editable element: standard block or design block zone
+        const standardEditable = blockWrapper.querySelector(`#editable-${blockId}`);
+        const designEditable = anchorEl?.closest('[data-editable]');
+        const editable = (standardEditable || designEditable) as Element | null;
         if (!editable) {
           provider.trackCursor(null);
           return;
@@ -193,7 +196,10 @@ export function useCollaborativeEditor({
           ? anchorOffset
           : getCharOffset(editable, sel.focusNode, sel.focusOffset);
 
-        provider.trackCursor({ blockId, anchorOffset, focusOffset });
+        // For design blocks, include which editable zone the cursor is in
+        const editableKey = designEditable?.getAttribute('data-editable') || undefined;
+
+        provider.trackCursor({ blockId, anchorOffset, focusOffset, editableKey });
       }, 50);
     };
 

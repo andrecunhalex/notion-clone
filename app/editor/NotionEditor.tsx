@@ -12,6 +12,7 @@ import {
   usePagination
 } from './hooks';
 import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar } from './components';
+import { getTemplate } from './components/designBlocks';
 import { FontLoader } from './components/FontLoader';
 import { SYSTEM_FONTS } from './fonts';
 import { EditorProvider, EditorDataSource, useLocalDataSource } from './EditorProvider';
@@ -162,7 +163,7 @@ const NotionEditorInner: React.FC<{
     }
   }, [didDragSelect, blocks, addBlock]);
 
-  const handleSlashMenuSelect = useCallback((type: BlockData['type']) => {
+  const handleSlashMenuSelect = useCallback((type: BlockData['type'], templateId?: string) => {
     if (!slashMenu.blockId) return;
 
     const blockEl = document.getElementById(`editable-${slashMenu.blockId}`);
@@ -214,6 +215,20 @@ const NotionEditorInner: React.FC<{
         const firstCell = document.querySelector(`[data-table-cell="${slashMenu.blockId}-0-0"]`) as HTMLElement;
         firstCell?.focus({ preventScroll: true });
       }, 50);
+    } else if (type === 'design_block' && templateId) {
+      if (blockEl) blockEl.innerHTML = '';
+      const tpl = getTemplate(templateId);
+      const idx = blocks.findIndex(b => b.id === slashMenu.blockId);
+      const newTextBlock: BlockData = { id: generateId(), type: 'text', content: '' };
+      const newBlocks = blocks.map(b =>
+        b.id === slashMenu.blockId
+          ? { ...b, type: 'design_block' as const, content: '', designBlockData: { templateId, values: { ...tpl?.defaults } } }
+          : b
+      );
+      newBlocks.splice(idx + 1, 0, newTextBlock);
+      setBlocks(newBlocks);
+      setSlashMenu(prev => ({ ...prev, isOpen: false }));
+      focusBlock(newTextBlock.id);
     } else {
       if (blockEl) blockEl.innerHTML = cleanContent;
       updateBlock(slashMenu.blockId, { type, content: cleanContent });

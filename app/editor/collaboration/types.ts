@@ -28,6 +28,8 @@ export interface CursorPosition {
   anchorOffset: number;
   /** Character offset of the focus (end of selection, same as anchor if collapsed) */
   focusOffset: number;
+  /** For design blocks: which data-editable zone the cursor is in */
+  editableKey?: string;
 }
 
 // ---------------------------------------------------------------------------

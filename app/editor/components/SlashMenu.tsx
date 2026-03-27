@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Type, Heading1, Heading2, Heading3, List, ListOrdered, Table, Minus, ImagePlus, LucideIcon } from 'lucide-react';
+import { Type, Heading1, Heading2, Heading3, List, ListOrdered, Table, Minus, ImagePlus, LayoutTemplate, LucideIcon } from 'lucide-react';
 import { BlockType } from '../types';
+import { DESIGN_TEMPLATES, DesignBlockTemplate } from './designBlocks';
 
 interface SlashMenuProps {
   x: number;
   y: number;
   close: () => void;
-  onSelect: (type: BlockType) => void;
+  onSelect: (type: BlockType, templateId?: string) => void;
 }
 
 interface MenuOption {
@@ -16,6 +17,7 @@ interface MenuOption {
   label: string;
   icon: LucideIcon;
   aliases: string[];
+  hasSubmenu?: boolean;
 }
 
 const MENU_OPTIONS: MenuOption[] = [
@@ -28,6 +30,7 @@ const MENU_OPTIONS: MenuOption[] = [
   { type: 'divider', label: 'Divisor', icon: Minus, aliases: ['divider', 'divisor', 'hr', 'linha', '---'] },
   { type: 'table', label: 'Tabela', icon: Table, aliases: ['table', 'tabela', 'grid'] },
   { type: 'image', label: 'Imagem', icon: ImagePlus, aliases: ['image', 'imagem', 'foto', 'picture', 'img'] },
+  { type: 'design_block', label: 'Design', icon: LayoutTemplate, aliases: ['design', 'template', 'bloco', 'card', 'callout'], hasSubmenu: true },
 ];
 
 const MENU_GAP_ABOVE = 22;
@@ -47,12 +50,35 @@ function matchesFilter(option: MenuOption, query: string): boolean {
   return option.aliases.some(alias => normalize(alias).includes(q));
 }
 
+/** Build a static preview HTML from a template, injecting default values */
+function buildPreviewHtml(tpl: DesignBlockTemplate): string {
+  const div = document.createElement('div');
+  div.innerHTML = tpl.html;
+  div.querySelectorAll<HTMLElement>('[data-editable]').forEach(el => {
+    const key = el.getAttribute('data-editable')!;
+    el.textContent = tpl.defaults[key] ?? '';
+    el.removeAttribute('data-editable');
+  });
+  div.querySelectorAll<HTMLElement>('[data-swappable]').forEach(el => {
+    const key = el.getAttribute('data-swappable')!;
+    if (el.tagName === 'IMG') (el as HTMLImageElement).src = tpl.defaults[key] ?? '';
+    el.removeAttribute('data-swappable');
+  });
+  return div.innerHTML;
+}
+
 export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [filter, setFilter] = useState('');
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+  const [showDesignSubmenu, setShowDesignSubmenu] = useState(false);
+  const [submenuPos, setSubmenuPos] = useState<{ left: number; top: number } | null>(null);
+  const [submenuIndex, setSubmenuIndex] = useState(0);
+  const [inSubmenu, setInSubmenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const submenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const designTriggerRef = useRef<HTMLButtonElement>(null);
 
   const filteredOptions = MENU_OPTIONS.filter(opt => matchesFilter(opt, filter));
 
@@ -116,13 +142,44 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
     }
   }, [selectedIndex]);
 
-  const handleSelect = useCallback((type: BlockType) => {
-    onSelect(type);
+  const handleSelect = useCallback((type: BlockType, templateId?: string) => {
+    onSelect(type, templateId);
   }, [onSelect]);
+
+  // Helper to open submenu and calculate position
+  const openSubmenu = useCallback(() => {
+    setShowDesignSubmenu(true);
+    setSubmenuIndex(0);
+    setInSubmenu(false);
+    requestAnimationFrame(() => {
+      if (designTriggerRef.current) {
+        const rect = designTriggerRef.current.getBoundingClientRect();
+        setSubmenuPos({ left: rect.right + 4, top: rect.top });
+      }
+    });
+  }, []);
 
   // Keyboard navigation + filter building
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // When inside the submenu
+      if (inSubmenu && showDesignSubmenu) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault(); e.stopPropagation();
+          setSubmenuIndex(prev => (prev + 1) % DESIGN_TEMPLATES.length);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault(); e.stopPropagation();
+          setSubmenuIndex(prev => (prev - 1 + DESIGN_TEMPLATES.length) % DESIGN_TEMPLATES.length);
+        } else if (e.key === 'ArrowLeft' || e.key === 'Escape') {
+          e.preventDefault(); e.stopPropagation();
+          setInSubmenu(false);
+        } else if (e.key === 'Enter') {
+          e.preventDefault(); e.stopPropagation();
+          handleSelect('design_block', DESIGN_TEMPLATES[submenuIndex].id);
+        }
+        return;
+      }
+
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         e.stopPropagation();
@@ -131,11 +188,25 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
         e.preventDefault();
         e.stopPropagation();
         setSelectedIndex(prev => (prev - 1 + (filteredOptions.length || 1)) % (filteredOptions.length || 1));
+      } else if (e.key === 'ArrowRight') {
+        // Open submenu if current item has one
+        const opt = filteredOptions[selectedIndex];
+        if (opt?.hasSubmenu) {
+          e.preventDefault(); e.stopPropagation();
+          openSubmenu();
+          setInSubmenu(true);
+        }
       } else if (e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
         if (filteredOptions.length > 0) {
-          handleSelect(filteredOptions[selectedIndex]?.type ?? filteredOptions[0].type);
+          const opt = filteredOptions[selectedIndex] ?? filteredOptions[0];
+          if (opt.hasSubmenu) {
+            openSubmenu();
+            setInSubmenu(true);
+          } else {
+            handleSelect(opt.type);
+          }
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
@@ -160,7 +231,7 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [selectedIndex, filteredOptions, close, handleSelect, filter]);
+  }, [selectedIndex, filteredOptions, close, handleSelect, filter, inSubmenu, showDesignSubmenu, submenuIndex, openSubmenu]);
 
   // Click outside closes
   useEffect(() => {
@@ -205,9 +276,28 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
           filteredOptions.map((opt, i) => (
             <button
               key={opt.type}
+              ref={opt.hasSubmenu ? designTriggerRef : undefined}
               data-menu-item
-              onClick={() => handleSelect(opt.type)}
-              onMouseEnter={() => setSelectedIndex(i)}
+              onClick={() => {
+                if (opt.hasSubmenu) {
+                  setSelectedIndex(i);
+                  openSubmenu();
+                  setInSubmenu(true);
+                } else {
+                  handleSelect(opt.type);
+                }
+              }}
+              onMouseEnter={() => {
+                setSelectedIndex(i);
+                setInSubmenu(false);
+                if (opt.hasSubmenu) {
+                  if (submenuTimerRef.current) clearTimeout(submenuTimerRef.current);
+                  submenuTimerRef.current = setTimeout(() => openSubmenu(), 150);
+                } else {
+                  if (submenuTimerRef.current) clearTimeout(submenuTimerRef.current);
+                  setShowDesignSubmenu(false);
+                }
+              }}
               className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded text-left transition-colors ${
                 i === selectedIndex
                   ? 'bg-blue-50 text-blue-600'
@@ -215,7 +305,12 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
               }`}
             >
               <opt.icon size={16} />
-              {opt.label}
+              <span className="flex-1">{opt.label}</span>
+              {opt.hasSubmenu && (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-50">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              )}
             </button>
           ))
         ) : (
@@ -224,6 +319,48 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
           </div>
         )}
       </div>
+
+      {/* Design templates submenu — rendered outside scroll area via fixed position */}
+      {showDesignSubmenu && submenuPos && (
+        <div
+          className="fixed w-64 bg-white shadow-xl border border-gray-200 rounded-lg py-1.5 z-[60]"
+          style={{ left: submenuPos.left, top: submenuPos.top }}
+          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
+          onMouseEnter={() => {
+            if (submenuTimerRef.current) clearTimeout(submenuTimerRef.current);
+            setInSubmenu(true);
+          }}
+          onMouseLeave={() => {
+            setInSubmenu(false);
+            setShowDesignSubmenu(false);
+          }}
+        >
+          <div className="px-3 pb-1 text-xs font-semibold text-gray-400 uppercase">Templates</div>
+          {DESIGN_TEMPLATES.map((tpl, ti) => {
+            const previewHtml = buildPreviewHtml(tpl);
+            return (
+              <button
+                key={tpl.id}
+                onClick={() => handleSelect('design_block', tpl.id)}
+                onMouseEnter={() => { setSubmenuIndex(ti); setInSubmenu(true); }}
+                className={`flex flex-col gap-1 w-full px-2 py-1.5 text-left rounded mx-1 transition-colors ${
+                  inSubmenu && submenuIndex === ti
+                    ? 'bg-blue-50'
+                    : 'hover:bg-gray-50'
+                }`}
+                style={{ width: 'calc(100% - 8px)' }}
+              >
+                <span className="text-sm font-medium text-gray-700">{tpl.name}</span>
+                <div
+                  className="w-full rounded-md overflow-hidden border border-gray-100 pointer-events-none bg-white px-2 py-1.5"
+                  style={{ transform: 'scale(0.75)', transformOrigin: 'top left', maxHeight: 60, width: '133%' }}
+                  dangerouslySetInnerHTML={{ __html: previewHtml }}
+                />
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Footer: close button */}
       <div className="border-t border-gray-100 px-1 py-1">

@@ -108,10 +108,15 @@ const RemoteUserCursor: React.FC<{ user: RemoteUser }> = memo(({ user }) => {
       return;
     }
 
-    // Use data-block-id wrapper to find the correct editable element,
-    // avoiding nested contentEditable duplicates inside corrupted content
+    // Use data-block-id wrapper to find the correct editable element
     const wrapper = document.querySelector(`[data-block-id="${cursor.blockId}"]`);
-    const editableEl = wrapper?.querySelector(`#editable-${cursor.blockId}`) as HTMLElement | null;
+    // Standard block, or specific design block zone via editableKey
+    const editableEl = (
+      wrapper?.querySelector(`#editable-${cursor.blockId}`) ||
+      (cursor.editableKey
+        ? wrapper?.querySelector(`[data-editable="${cursor.editableKey}"]`)
+        : wrapper?.querySelector('[data-editable]'))
+    ) as HTMLElement | null;
     if (!editableEl) {
       setVisuals({ cursorRect: null, selectionRects: [] });
       return;

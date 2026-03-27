@@ -62,8 +62,12 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     const el = sel.anchorNode?.nodeType === Node.ELEMENT_NODE
       ? sel.anchorNode as HTMLElement
       : sel.anchorNode?.parentElement;
-    const editable = el?.closest('[id^="editable-"]');
-    return editable?.id?.replace('editable-', '') || null;
+    const editable = el?.closest('[id^="editable-"]') || el?.closest('[data-editable]');
+    if (!editable) return null;
+    if (editable.id?.startsWith('editable-')) return editable.id.replace('editable-', '');
+    // Design block: find parent block wrapper
+    const wrapper = editable.closest('[data-block-id]');
+    return wrapper?.getAttribute('data-block-id') || null;
   }, []);
 
   const findStyledSpan = useCallback((node: Node | null): HTMLSpanElement | null => {
@@ -106,7 +110,7 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     if (!el) return false;
     const editable = el.closest('[contenteditable="true"], [contenteditable=""]');
     if (!editable) return false;
-    return !!(editable.id?.startsWith('editable-') || editable.hasAttribute('data-table-cell'));
+    return !!(editable.id?.startsWith('editable-') || editable.hasAttribute('data-table-cell') || editable.hasAttribute('data-editable'));
   }, []);
 
   // --- Format detection ---
@@ -594,7 +598,7 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
       if (!active || !(active as HTMLElement).isContentEditable) return;
       const editable = active.closest('[contenteditable]') as HTMLElement;
       if (!editable) return;
-      if (!editable.id?.startsWith('editable-') && !editable.hasAttribute('data-table-cell')) return;
+      if (!editable.id?.startsWith('editable-') && !editable.hasAttribute('data-table-cell') && !editable.hasAttribute('data-editable')) return;
 
       let handled = false;
       if (e.key === 'b' && !e.shiftKey) {

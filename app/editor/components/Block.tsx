@@ -6,6 +6,7 @@ import { BlockData, BlockType, SlashMenuState, DropTarget } from '../types';
 import { isListType, getBulletChar, isContentEmpty } from '../utils';
 import { TableBlock } from './TableBlock';
 import { ImageBlock } from './ImageBlock';
+import { DesignBlock } from './designBlocks';
 import { useBlockKeyboard, findEditable, focusEditable } from '../hooks/useBlockKeyboard';
 
 interface BlockProps {
@@ -43,6 +44,7 @@ const BLOCK_STYLES: Record<string, string> = {
   divider: '',
   table: '',
   image: '',
+  design_block: '',
 };
 
 const BLOCK_INLINE_STYLES: Record<string, React.CSSProperties> = {
@@ -64,6 +66,7 @@ const HANDLE_LINE: Record<string, string> = {
   divider: 'h-4',
   table: 'h-6',
   image: 'h-6',
+  design_block: 'h-6',
 };
 
 const BlockInner: React.FC<BlockProps> = ({
@@ -109,7 +112,7 @@ const BlockInner: React.FC<BlockProps> = ({
 
   // Sync is-empty class with content
   useEffect(() => {
-    if (block.type === 'table' || block.type === 'divider' || block.type === 'image') return;
+    if (block.type === 'table' || block.type === 'divider' || block.type === 'image' || block.type === 'design_block') return;
     const el = document.getElementById(`editable-${block.id}`);
     if (el) {
       el.classList.toggle('is-empty', isContentEmpty(block.content));
@@ -119,7 +122,7 @@ const BlockInner: React.FC<BlockProps> = ({
   // Sync innerHTML from external changes only (undo/redo, paste, collaborative edits)
   // Skip when user is actively typing in this block (isLocalEditRef)
   useEffect(() => {
-    if (block.type === 'table' || block.type === 'divider' || block.type === 'image') return;
+    if (block.type === 'table' || block.type === 'divider' || block.type === 'image' || block.type === 'design_block') return;
     if (isLocalEditRef.current) {
       isLocalEditRef.current = false;
       return;
@@ -206,6 +209,7 @@ const BlockInner: React.FC<BlockProps> = ({
   const isTable = block.type === 'table';
   const isDivider = block.type === 'divider';
   const isImage = block.type === 'image';
+  const isDesignBlock = block.type === 'design_block';
 
   const contentStyle = BLOCK_INLINE_STYLES[block.type];
   const alignStyle = block.align ? { ...contentStyle, textAlign: block.align as React.CSSProperties['textAlign'] } : contentStyle;
@@ -242,7 +246,13 @@ const BlockInner: React.FC<BlockProps> = ({
       <div className={`flex-1 min-w-0 notion-block-content py-0.5 px-1 rounded-sm transition-colors ${
         isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'
       }`}>
-        {isDivider ? (
+        {isDesignBlock ? (
+          <DesignBlock
+            block={block}
+            updateBlock={updateBlock}
+            uploadImage={uploadImage}
+          />
+        ) : isDivider ? (
           <div className="py-2">
             <hr className="border-t border-gray-300" />
           </div>

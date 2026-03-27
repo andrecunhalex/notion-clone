@@ -1,6 +1,6 @@
 // --- Tipos do Editor ---
 
-export type BlockType = 'text' | 'h1' | 'h2' | 'h3' | 'divider' | 'bullet_list' | 'numbered_list' | 'table' | 'image';
+export type BlockType = 'text' | 'h1' | 'h2' | 'h3' | 'divider' | 'bullet_list' | 'numbered_list' | 'table' | 'image' | 'design_block';
 
 export interface TableCellData {
   content: string;
@@ -25,6 +25,11 @@ export interface ImageData {
 
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
 
+export interface DesignBlockData {
+  templateId: string;
+  values: Record<string, string>;
+}
+
 export interface BlockData {
   id: string;
   type: BlockType;
@@ -33,6 +38,7 @@ export interface BlockData {
   align?: TextAlign;
   tableData?: TableData;
   imageData?: ImageData;
+  designBlockData?: DesignBlockData;
 }
 
 export interface SlashMenuState {

@@ -68,6 +68,19 @@ export function focusEditable(target: HTMLElement, toEnd: boolean) {
     sel.removeAllRanges();
     sel.addRange(range);
   }
+  // Scroll cursor into view if it's outside the viewport
+  scrollCursorIntoView(target);
+}
+
+/** Smoothly scroll so the focused element is visible */
+function scrollCursorIntoView(el: HTMLElement) {
+  requestAnimationFrame(() => {
+    const rect = el.getBoundingClientRect();
+    const margin = 60;
+    if (rect.top < margin || rect.bottom > window.innerHeight - margin) {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  });
 }
 
 function isCursorOnFirstLine(el: HTMLElement): boolean {
