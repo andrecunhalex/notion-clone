@@ -341,13 +341,12 @@ const NotionEditorInner: React.FC<{
     const onKeyDown = () => setFollowingUserId(null);
     const onMouseDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      // Only stop following on clicks inside the editor content
       if (target.closest('.notion-block-content') || target.closest('[contenteditable]')) {
         setFollowingUserId(null);
       }
     };
     document.addEventListener('keydown', onKeyDown, { once: true });
-    document.addEventListener('mousedown', onMouseDown, { once: true });
+    document.addEventListener('mousedown', onMouseDown);
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('mousedown', onMouseDown);
