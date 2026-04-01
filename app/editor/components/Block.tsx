@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useCallback, Dispatch, SetStateAction, memo } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo, Dispatch, SetStateAction, memo } from 'react';
 import { GripVertical } from 'lucide-react';
 import { BlockData, BlockType, SlashMenuState, DropTarget } from '../types';
 import { isListType, getBulletChar, isContentEmpty } from '../utils';
@@ -195,11 +195,6 @@ const BlockInner: React.FC<BlockProps> = ({
     onBlockFocus?.(block.id);
   }, [onClearSelection, onBlockFocus, block.id]);
 
-  // Set active block for non-text block types (tables, images, design blocks, dividers)
-  const handleBlockClick = useCallback(() => {
-    onBlockFocus?.(block.id);
-  }, [onBlockFocus, block.id]);
-
   const isList = isListType(block.type);
   const indent = block.indent ?? 0;
 
@@ -231,16 +226,24 @@ const BlockInner: React.FC<BlockProps> = ({
   const isImage = block.type === 'image';
   const isDesignBlock = block.type === 'design_block';
   const isFullWidth = !!block.fullWidth;
+  const isNonTextBlock = isTable || isDivider || isImage || isDesignBlock;
 
   const contentStyle = BLOCK_INLINE_STYLES[block.type];
   const alignStyle = block.align ? { ...contentStyle, textAlign: block.align as React.CSSProperties['textAlign'] } : contentStyle;
 
-  const fullWidthStyle = isFullWidth ? {
+  const fullWidthStyle = useMemo(() => isFullWidth ? {
     marginLeft: -edgePadding.left,
     marginRight: -edgePadding.right,
     ...(isFirstOnPage ? { marginTop: -edgePadding.top } : {}),
     ...(isLastOnPage ? { marginBottom: -edgePadding.bottom } : {}),
-  } : undefined;
+  } : undefined, [isFullWidth, edgePadding, isFirstOnPage, isLastOnPage]);
+
+  // Set active block on click — only for non-text blocks (text blocks handle this via onFocus)
+  const handleBlockClick = useCallback((e: React.MouseEvent) => {
+    if (!(e.target as HTMLElement).closest('[contenteditable]')) {
+      onBlockFocus?.(block.id);
+    }
+  }, [onBlockFocus, block.id]);
 
   return (
     <div
