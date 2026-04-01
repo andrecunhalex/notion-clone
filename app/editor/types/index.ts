@@ -36,6 +36,7 @@ export interface BlockData {
   content: string;
   indent?: number;
   align?: TextAlign;
+  fullWidth?: boolean;
   tableData?: TableData;
   imageData?: ImageData;
   designBlockData?: DesignBlockData;

@@ -29,6 +29,9 @@ function yMapToBlock(yMap: Y.Map<unknown>): BlockData {
   const designBlockData = yMap.get('designBlockData') as BlockData['designBlockData'] | undefined;
   if (designBlockData) block.designBlockData = designBlockData;
 
+  const fullWidth = yMap.get('fullWidth') as boolean | undefined;
+  if (fullWidth) block.fullWidth = fullWidth;
+
   return block;
 }
 
@@ -52,6 +55,9 @@ function blockToYMap(block: BlockData, yMap: Y.Map<unknown>) {
 
   if (block.designBlockData) yMap.set('designBlockData', block.designBlockData);
   else yMap.delete('designBlockData');
+
+  if (block.fullWidth) yMap.set('fullWidth', block.fullWidth);
+  else yMap.delete('fullWidth');
 }
 
 // ---------------------------------------------------------------------------
@@ -242,6 +248,13 @@ export class YjsDocSync {
       }
     } else if (yMap.get('designBlockData')) {
       yMap.delete('designBlockData');
+    }
+
+    const curFullWidth = yMap.get('fullWidth') as boolean | undefined;
+    if (block.fullWidth) {
+      if (curFullWidth !== block.fullWidth) yMap.set('fullWidth', block.fullWidth);
+    } else if (curFullWidth) {
+      yMap.delete('fullWidth');
     }
   }
 }

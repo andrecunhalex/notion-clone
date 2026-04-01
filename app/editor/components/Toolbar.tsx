@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { RotateCcw, RotateCw, FileText, Scroll, ChevronDown, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { RotateCcw, RotateCw, FileText, Scroll, ChevronDown, X, ZoomIn, ZoomOut, MoveHorizontal } from 'lucide-react';
 import { ViewMode } from '../types';
 import { useFonts } from './FontLoader';
 
@@ -42,6 +42,12 @@ interface ToolbarProps {
   zoom?: number;
   /** Called when zoom changes */
   onZoomChange?: (zoom: number) => void;
+  /** Whether there are target blocks for fullWidth toggle */
+  hasTargetBlocks?: boolean;
+  /** Whether all target blocks are already fullWidth */
+  allTargetsFullWidth?: boolean;
+  /** Toggle fullWidth on target blocks */
+  onToggleFullWidth?: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -60,6 +66,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onFollowUser,
   zoom = 1,
   onZoomChange,
+  hasTargetBlocks,
+  allTargetsFullWidth,
+  onToggleFullWidth,
 }) => {
   const { allFonts, customFonts } = useFonts();
   const [fontOpen, setFontOpen] = useState(false);
@@ -81,7 +90,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const followedUser = remoteUsers?.find(u => u.id === followingUserId);
 
   return (
-    <div className="sticky top-0 bg-white/95 backdrop-blur-sm z-100 border-b border-gray-100 px-8 py-3 flex justify-between items-center shadow-sm">
+    <div data-editor-toolbar className="sticky top-0 bg-white/95 backdrop-blur-sm z-100 border-b border-gray-100 px-8 py-3 flex justify-between items-center shadow-sm">
       <div className="flex items-center gap-2 text-gray-500">
         <span className="font-semibold text-gray-800">{title}</span>
       </div>
@@ -221,6 +230,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         >
           <RotateCw size={16} />
         </button>
+        {onToggleFullWidth && (
+          <>
+            <div className="w-px h-4 bg-gray-200 mx-1" />
+            <button
+              onClick={onToggleFullWidth}
+              disabled={!hasTargetBlocks}
+              className={`p-1 rounded transition-colors ${
+                !hasTargetBlocks ? 'opacity-30 cursor-default' :
+                allTargetsFullWidth ? 'text-blue-500 bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-100'
+              }`}
+              title={allTargetsFullWidth ? 'Adicionar margens' : 'Remover margens'}
+            >
+              <MoveHorizontal size={16} />
+            </button>
+          </>
+        )}
         <div className="w-px h-4 bg-gray-200 mx-2" />
         <button
           onClick={onToggleViewMode}

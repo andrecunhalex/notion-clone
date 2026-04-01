@@ -34,6 +34,8 @@ const NotionEditorInner: React.FC<{
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
   const [zoom, setZoom] = useState(config.defaultZoom ?? 1);
   const [followingUserId, setFollowingUserId] = useState<string | null>(null);
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  const activeBlockIdRef = useRef<string | null>(null);
 
   const pageConfig = useMemo(() => resolvePageConfig(config.page), [config.page]);
   const pageContentHeight = config.pageContentHeight ?? getContentHeight(pageConfig);
@@ -97,7 +99,7 @@ const NotionEditorInner: React.FC<{
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('.notion-block-content') || target.closest('.drag-handle')) return;
+    if (target.closest('.notion-block-content') || target.closest('.drag-handle') || target.closest('[data-editor-toolbar]')) return;
     clearSelection();
     setSlashMenu(prev => ({ ...prev, isOpen: false }));
     startSelection(e);
@@ -271,6 +273,53 @@ const NotionEditorInner: React.FC<{
     return map;
   }, [blocks]);
 
+  const edgePadding = useMemo(() => {
+    if (viewMode === 'paginated') {
+      return { top: pageConfig.paddingTop, right: pageConfig.paddingRight, bottom: pageConfig.paddingBottom, left: pageConfig.paddingLeft };
+    }
+    // continuous mode: px-12 = 3rem = 48px, mt-12 = 48px
+    return { top: 48, right: 48, bottom: 0, left: 48 };
+  }, [viewMode, pageConfig.paddingTop, pageConfig.paddingRight, pageConfig.paddingBottom, pageConfig.paddingLeft]);
+
+  const handleBlockFocus = useCallback((blockId: string | null) => {
+    activeBlockIdRef.current = blockId;
+    setActiveBlockId(blockId);
+    onBlockFocus?.(blockId);
+  }, [onBlockFocus]);
+
+  // Full-width margin toggle
+  const targetBlockIds = useMemo(() => {
+    if (selectedIds.size > 0) return Array.from(selectedIds);
+    if (activeBlockId && blocks.find(b => b.id === activeBlockId)) return [activeBlockId];
+    return [];
+  }, [selectedIds, activeBlockId, blocks]);
+
+  const allTargetsFullWidth = targetBlockIds.length > 0 && targetBlockIds.every(id => blocks.find(b => b.id === id)?.fullWidth);
+
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
+
+  const toggleFullWidth = useCallback(() => {
+    const currentBlocks = blocksRef.current;
+    const sel = selectedIdsRef.current;
+    let targets: string[];
+    if (sel.size > 0) {
+      targets = Array.from(sel);
+    } else {
+      const id = activeBlockIdRef.current;
+      if (id && currentBlocks.find(b => b.id === id)) {
+        targets = [id];
+      } else {
+        return;
+      }
+    }
+    const targetSet = new Set(targets);
+    const allFull = targets.every(id => currentBlocks.find(b => b.id === id)?.fullWidth);
+    setBlocks(currentBlocks.map(b =>
+      targetSet.has(b.id) ? { ...b, fullWidth: allFull ? undefined : true } : b
+    ));
+  }, [setBlocks]);
+
   const lastBlockId = blocks[blocks.length - 1]?.id;
 
   // Follow mode: auto-scroll to the followed user's cursor block
@@ -418,6 +467,9 @@ const NotionEditorInner: React.FC<{
         onFollowUser={setFollowingUserId}
         zoom={zoom}
         onZoomChange={setZoom}
+        hasTargetBlocks={targetBlockIds.length > 0}
+        allTargetsFullWidth={allTargetsFullWidth}
+        onToggleFullWidth={toggleFullWidth}
       />
 
       <div
@@ -488,9 +540,12 @@ const NotionEditorInner: React.FC<{
                   dropTarget={dropTarget}
                   onHeightChange={handleHeightChange}
                   onClearSelection={clearSelection}
-                  onBlockFocus={onBlockFocus}
+                  onBlockFocus={handleBlockFocus}
                   uploadImage={config.uploadImage}
                   autoNumber={designAutoNumbers[block.id]}
+                  edgePadding={edgePadding}
+                  isFirstOnPage={index === 0}
+                  isLastOnPage={index === pageBlocks.length - 1}
                 />
               ))}
             </div>

@@ -9,6 +9,13 @@ import { ImageBlock } from './ImageBlock';
 import { DesignBlock } from './designBlocks';
 import { useBlockKeyboard, findEditable, focusEditable } from '../hooks/useBlockKeyboard';
 
+interface EdgePadding {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 interface BlockProps {
   block: BlockData;
   index: number;
@@ -33,6 +40,9 @@ interface BlockProps {
   onBlockFocus?: (blockId: string | null) => void;
   uploadImage?: (file: File) => Promise<string | null>;
   autoNumber?: string;
+  edgePadding: EdgePadding;
+  isFirstOnPage?: boolean;
+  isLastOnPage?: boolean;
 }
 
 const BLOCK_STYLES: Record<string, string> = {
@@ -93,6 +103,9 @@ const BlockInner: React.FC<BlockProps> = ({
   onBlockFocus,
   uploadImage,
   autoNumber,
+  edgePadding,
+  isFirstOnPage,
+  isLastOnPage,
 }) => {
   const internalRef = useRef<HTMLDivElement>(null);
   // Track whether the user is actively editing this block's contentEditable
@@ -182,6 +195,11 @@ const BlockInner: React.FC<BlockProps> = ({
     onBlockFocus?.(block.id);
   }, [onClearSelection, onBlockFocus, block.id]);
 
+  // Set active block for non-text block types (tables, images, design blocks, dividers)
+  const handleBlockClick = useCallback(() => {
+    onBlockFocus?.(block.id);
+  }, [onBlockFocus, block.id]);
+
   const isList = isListType(block.type);
   const indent = block.indent ?? 0;
 
@@ -212,15 +230,25 @@ const BlockInner: React.FC<BlockProps> = ({
   const isDivider = block.type === 'divider';
   const isImage = block.type === 'image';
   const isDesignBlock = block.type === 'design_block';
+  const isFullWidth = !!block.fullWidth;
 
   const contentStyle = BLOCK_INLINE_STYLES[block.type];
   const alignStyle = block.align ? { ...contentStyle, textAlign: block.align as React.CSSProperties['textAlign'] } : contentStyle;
+
+  const fullWidthStyle = isFullWidth ? {
+    marginLeft: -edgePadding.left,
+    marginRight: -edgePadding.right,
+    ...(isFirstOnPage ? { marginTop: -edgePadding.top } : {}),
+    ...(isLastOnPage ? { marginBottom: -edgePadding.bottom } : {}),
+  } : undefined;
 
   return (
     <div
       ref={internalRef}
       data-block-id={block.id}
-      className="group relative flex items-start -ml-12 pr-2 py-px my-px"
+      className={`group relative flex items-start ${isFullWidth ? '' : '-ml-12 pr-2 py-px my-px'}`}
+      style={fullWidthStyle}
+      onClick={handleBlockClick}
       onDragOver={e => onDragOver(e, block.id)}
       onDrop={e => { e.stopPropagation(); onDrop(e); }}
     >
@@ -234,18 +262,31 @@ const BlockInner: React.FC<BlockProps> = ({
         />
       )}
 
-      <div className={`w-12 shrink-0 flex items-center justify-center ${HANDLE_LINE[block.type] || 'h-6'}`}>
-        <div
-          className="drag-handle p-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-gray-400 hover:bg-gray-200 rounded transition-opacity"
-          draggable
-          onDragStart={e => onDragStart(e, block.id)}
-          onMouseDown={e => e.stopPropagation()}
-        >
-          <GripVertical size={16} />
+      {isFullWidth ? (
+        <div className={`absolute left-2 top-0 w-12 shrink-0 flex items-center justify-center ${HANDLE_LINE[block.type] || 'h-6'} z-10`}>
+          <div
+            className="drag-handle p-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-gray-400 hover:bg-gray-200 rounded transition-opacity"
+            draggable
+            onDragStart={e => onDragStart(e, block.id)}
+            onMouseDown={e => e.stopPropagation()}
+          >
+            <GripVertical size={16} />
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className={`w-12 shrink-0 flex items-center justify-center ${HANDLE_LINE[block.type] || 'h-6'}`}>
+          <div
+            className="drag-handle p-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-gray-400 hover:bg-gray-200 rounded transition-opacity"
+            draggable
+            onDragStart={e => onDragStart(e, block.id)}
+            onMouseDown={e => e.stopPropagation()}
+          >
+            <GripVertical size={16} />
+          </div>
+        </div>
+      )}
 
-      <div className={`flex-1 min-w-0 notion-block-content py-0.5 px-1 rounded-sm transition-colors ${
+      <div className={`flex-1 min-w-0 notion-block-content ${isFullWidth ? '' : 'py-0.5 px-1'} rounded-sm transition-colors ${
         isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'
       }`}>
         {isDesignBlock ? (
@@ -312,6 +353,9 @@ export const Block = memo(BlockInner, (prev, next) => {
     prev.listNumber === next.listNumber &&
     prev.isLastBlock === next.isLastBlock &&
     prev.autoNumber === next.autoNumber &&
+    prev.edgePadding === next.edgePadding &&
+    prev.isFirstOnPage === next.isFirstOnPage &&
+    prev.isLastOnPage === next.isLastOnPage &&
     prev.dropTarget?.id === next.dropTarget?.id &&
     prev.dropTarget?.position === next.dropTarget?.position
   );

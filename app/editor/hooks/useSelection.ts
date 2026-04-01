@@ -61,9 +61,8 @@ export const useSelection = ({ blocks, containerRef, blockRefs }: UseSelectionPr
 
     const onDocMouseDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (!target.closest('.drag-handle')) {
-        setSelectedIds(new Set());
-      }
+      if (target.closest('.drag-handle') || target.closest('[data-editor-toolbar]')) return;
+      setSelectedIds(new Set());
     };
 
     document.addEventListener('mousemove', onMove);
