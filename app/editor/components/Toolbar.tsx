@@ -90,7 +90,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const followedUser = remoteUsers?.find(u => u.id === followingUserId);
 
   return (
-    <div data-editor-toolbar className="sticky top-0 bg-white/95 backdrop-blur-sm z-100 border-b border-gray-100 px-8 py-3 flex justify-between items-center shadow-sm">
+    <div data-editor-toolbar className="shrink-0 bg-white/95 backdrop-blur-sm z-100 border-b border-gray-100 px-8 py-3 flex justify-between items-center shadow-sm">
       <div className="flex items-center gap-2 text-gray-500">
         <span className="font-semibold text-gray-800">{title}</span>
       </div>

@@ -7,3 +7,6 @@ export { Toolbar } from './Toolbar';
 export { SelectionOverlay } from './SelectionOverlay';
 export { FloatingToolbar } from './FloatingToolbar';
 export { FontLoader } from './FontLoader';
+export { SectionNav } from './SectionNav';
+export { SectionNavPanel } from './SectionNavPanel';
+export { SectionTocPage } from './SectionTocPage';

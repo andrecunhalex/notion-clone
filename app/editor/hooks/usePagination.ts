@@ -15,7 +15,7 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
 
   const handleHeightChange = useCallback((id: string, height: number) => {
     setBlockHeights(prev => {
-      if (Math.abs((prev[id] || 0) - height) < 2) return prev;
+      if (prev[id] === height) return prev;
       return { ...prev, [id]: height };
     });
   }, []);

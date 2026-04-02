@@ -70,7 +70,26 @@ function CollaborativeEditor() {
         dataSource={dataSource}
         remoteUsers={remoteUsers}
         syncStatus={syncStatus}
-        config={{ uploadImage: handleUploadImage }}
+        config={{ 
+          uploadImage: handleUploadImage,
+          sectionNav: {
+            position: 'header',
+            pages: 'all',
+            maxButtons: 6,
+            activeColor: '#7c3aed',
+            maxLabelLength: 12,
+            buttonTemplate: {
+              activeHtml: `<div class="bg-purple-600 rounded-lg px-4 py-2 flex items-center gap-2 shadow-md"><span class="text-white text-xs">{{label}}</span></div>`,
+              inactiveHtml: `<div class="bg-gray-50 rounded-full px-3 py-1 border border-gray-200"><span class="text-gray-400 text-xs">{{label}}</span></div>`,
+            }
+          },
+          page: {
+            paddingBottom: 150,
+            paddingTop: 40,
+            paddingLeft: 70,
+            paddingRight: 70,
+          }
+        }}
       />
       <RemoteCursorsOverlay remoteUsers={remoteUsers} />
     </>

@@ -9,9 +9,12 @@ import {
   useDragAndDrop,
   useClipboard,
   useKeyboardShortcuts,
-  usePagination
+  usePagination,
+  useSectionNav,
 } from './hooks';
-import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar } from './components';
+import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar, SectionNav, SectionTocPage } from './components';
+import { SectionNavPanel } from './components/SectionNavPanel';
+import type { SectionNavMeta } from './hooks/useSectionNav';
 import { getTemplate, DESIGN_TEMPLATES } from './components/designBlocks';
 import { FontLoader } from './components/FontLoader';
 import { SYSTEM_FONTS } from './fonts';
@@ -44,6 +47,12 @@ const NotionEditorInner: React.FC<{
   const setDocumentFont = useCallback((font: string) => {
     setMeta({ documentFont: font });
   }, [setMeta]);
+  // Section nav metadata (custom labels, hidden sections)
+  const sectionNavMeta = (meta.sectionNav as SectionNavMeta) || {};
+  const setSectionNavMeta = useCallback((navMeta: SectionNavMeta) => {
+    setMeta({ sectionNav: navMeta });
+  }, [setMeta]);
+
   const [slashMenu, setSlashMenu] = useState<SlashMenuState>({
     isOpen: false, x: 0, y: 0, blockId: null
   });
@@ -51,6 +60,17 @@ const NotionEditorInner: React.FC<{
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const blockRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  const navConfig = config.sectionNav || {};
+  const {
+    sections, scrollToSection, setCustomLabel, toggleHidden, hasSections,
+  } = useSectionNav({
+    blocks, sectionNavMeta, setSectionNavMeta, scrollRef, zoom,
+    maxLabelLength: navConfig.maxLabelLength,
+  });
+
+  // Section panel starts open when there are sections
+  const [sectionPanelOpen, setSectionPanelOpen] = useState(true);
 
   const {
     selectedIds, setSelectedIds, selectionBox,
@@ -240,6 +260,82 @@ const NotionEditorInner: React.FC<{
   }, [slashMenu.blockId, blocks, updateBlock, setBlocks]);
 
   const pages = getPaginatedBlocks(blocks, blockHeights, viewMode, pageContentHeight);
+
+  // -----------------------------------------------------------------------
+  // Section Navigation: config, page filter, collapse, TOC page
+  // -----------------------------------------------------------------------
+
+  const navPosition = navConfig.position || 'header';
+  const navPageFilter = navConfig.pages ?? 'all';
+  const navMaxButtons = navConfig.maxButtons;
+
+  // Set of all section block IDs (for fast lookup)
+  const sectionBlockIds = useMemo(
+    () => new Set(sections.map(s => s.blockId)),
+    [sections],
+  );
+
+  const visibleSections = useMemo(() => sections.filter(s => !s.isHidden), [sections]);
+  const isCollapsed = navMaxButtons !== undefined && visibleSections.length > navMaxButtons;
+
+  // Per-page: set of section block IDs that live on that page (for "active" state)
+  const pageBlockIdSets = useMemo(() => {
+    return pages.map(pageBlocks => {
+      const ids = new Set<string>();
+      for (const b of pageBlocks) {
+        if (sectionBlockIds.has(b.id)) ids.add(b.id);
+      }
+      return ids;
+    });
+  }, [pages, sectionBlockIds]);
+
+  // Determine which pages show the nav bar
+  const shouldShowNav = useCallback((pageIndex: number): boolean => {
+    if (!hasSections) return false;
+    if (navPageFilter === 'none') return false;
+    if (navPageFilter === 'all') return true;
+    if (Array.isArray(navPageFilter)) return navPageFilter.includes(pageIndex);
+    return navPageFilter(pageIndex, pages.length);
+  }, [hasSections, navPageFilter, pages.length]);
+
+  // Build section → page number map (1-based, accounting for TOC page offset)
+  const sectionPageMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    const tocOffset = isCollapsed ? 1 : 0;
+    pages.forEach((pageBlocks, pageIdx) => {
+      for (const block of pageBlocks) {
+        if (sectionBlockIds.has(block.id)) {
+          map[block.id] = pageIdx + 1 + (pageIdx >= 1 ? tocOffset : 0);
+        }
+      }
+    });
+    return map;
+  }, [pages, isCollapsed, sectionBlockIds]);
+
+  // Build rendered pages array — inject TOC page at index 1 when collapsed
+  type RenderedPage =
+    | { type: 'blocks'; pageBlocks: BlockData[]; pageIndex: number }
+    | { type: 'toc' };
+
+  const renderedPages = useMemo<RenderedPage[]>(() => {
+    const result: RenderedPage[] = pages.map((pageBlocks, pageIndex) => ({
+      type: 'blocks' as const,
+      pageBlocks,
+      pageIndex,
+    }));
+    if (isCollapsed && result.length >= 1) {
+      result.splice(1, 0, { type: 'toc' as const });
+    }
+    return result;
+  }, [pages, isCollapsed]);
+
+  // Scroll to the TOC page
+  const scrollToTocPage = useCallback(() => {
+    const tocEl = document.querySelector('[data-toc-page]');
+    if (tocEl) {
+      tocEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
 
   // Pre-compute list numbers for all blocks to avoid passing the entire blocks array to Block
   const listNumbers = useMemo(() => {
@@ -444,7 +540,7 @@ const NotionEditorInner: React.FC<{
 
   return (
     <div
-      className={`min-h-screen text-gray-800 selection:bg-blue-200 ${
+      className={`h-screen flex flex-col text-gray-800 selection:bg-blue-200 ${
         selectionBox ? 'select-none' : ''
       } ${viewMode === 'paginated' ? 'bg-gray-100' : 'bg-white'}`}
       onMouseDown={handleMouseDown}
@@ -473,7 +569,7 @@ const NotionEditorInner: React.FC<{
 
       <div
         ref={scrollRef}
-        className={`relative overflow-auto ${
+        className={`relative overflow-auto flex-1 min-h-0 ${
           viewMode === 'paginated' ? 'pt-8 pb-8' : ''
         }`}
       >
@@ -490,65 +586,125 @@ const NotionEditorInner: React.FC<{
               width: pageConfig.width,
               transform: `scale(${zoom})`,
               transformOrigin: 'top center',
-              /* Reserve visual space for the scaled content */
             } : {}),
           }}
           onDragOver={handleContainerDragOver}
           onDrop={handleDrop}
         >
-          {pages.map((pageBlocks, pageIndex) => (
-            <div
-              key={pageIndex}
-              className={
-                viewMode === 'paginated'
-                  ? 'bg-white shadow-lg overflow-hidden'
-                  : ''
-              }
-              style={viewMode === 'paginated' ? {
-                width: pageConfig.width,
-                minHeight: pageConfig.height,
-                paddingTop: pageConfig.paddingTop,
-                paddingRight: pageConfig.paddingRight,
-                paddingBottom: pageConfig.paddingBottom,
-                paddingLeft: pageConfig.paddingLeft,
-                marginBottom: 32,
-                boxSizing: 'border-box',
-              } : undefined}
-              onClick={e => handlePageClick(e, pageBlocks)}
-            >
-              {pageBlocks.map((block, index) => (
-                <Block
-                  key={block.id}
-                  index={index}
-                  block={block}
-                  listNumber={listNumbers[block.id] || 1}
-                  isLastBlock={block.id === lastBlockId}
-                  isSelected={selectedIds.has(block.id)}
-                  updateBlock={updateBlock}
-                  addBlock={addBlock}
-                  addBlockBefore={addBlockBefore}
-                  addBlockWithContent={addBlockWithContent}
-                  addListBlock={addListBlock}
-                  removeBlock={removeBlock}
-                  mergeWithPrevious={mergeWithPrevious}
-                  setSlashMenu={setSlashMenu}
-                  blockRef={el => (blockRefs.current[block.id] = el)}
-                  onDragStart={handleDragStart}
-                  onDragOver={handleDragOver}
-                  onDrop={handleDrop}
-                  dropTarget={dropTarget}
-                  onHeightChange={handleHeightChange}
-                  onClearSelection={clearSelection}
-                  onBlockFocus={handleBlockFocus}
-                  uploadImage={config.uploadImage}
-                  autoNumber={designAutoNumbers[block.id]}
-                  edgePadding={edgePadding}
-                  isFirstOnPage={index === 0}
-                  isLastOnPage={index === pageBlocks.length - 1}
+          {renderedPages.map((page, renderIndex) => {
+            // Paginated page style: fixed size, padding creates margins, overflow hidden
+            const paginatedStyle = viewMode === 'paginated' ? {
+              width: pageConfig.width,
+              height: pageConfig.height,
+              paddingTop: pageConfig.paddingTop,
+              paddingRight: pageConfig.paddingRight,
+              paddingBottom: pageConfig.paddingBottom,
+              paddingLeft: pageConfig.paddingLeft,
+              marginBottom: 32,
+              boxSizing: 'border-box' as const,
+            } : undefined;
+
+            if (page.type === 'toc') {
+              return (
+                <div
+                  key="toc-page"
+                  data-toc-page
+                  className={viewMode === 'paginated' ? 'bg-white shadow-lg overflow-hidden' : ''}
+                  style={paginatedStyle}
+                >
+                  <SectionTocPage
+                    sections={sections}
+                    sectionPageMap={sectionPageMap}
+                    onScrollTo={scrollToSection}
+                    activeColor={navConfig.activeColor}
+                  />
+                </div>
+              );
+            }
+
+            const { pageBlocks, pageIndex } = page;
+            const showNav = shouldShowNav(pageIndex);
+            const vertical = navPosition === 'left' || navPosition === 'right';
+
+            const sectionNavElement = showNav ? (
+              <div data-editor-toolbar className={vertical ? '' : 'mb-2'}>
+                <SectionNav
+                  sections={sections}
+                  position={navPosition}
+                  onScrollTo={scrollToSection}
+                  pageBlockIds={pageBlockIdSets[pageIndex] || new Set()}
+                  collapsed={isCollapsed}
+                  onSummaryClick={scrollToTocPage}
+                  activeColor={navConfig.activeColor}
+                  buttonTemplate={navConfig.buttonTemplate}
                 />
-              ))}
-            </div>
-          ))}
+              </div>
+            ) : null;
+
+            const headerNavBlocks = showNav && (navPosition === 'header' || vertical);
+            const footerNavBlocks = showNav && navPosition === 'footer';
+
+            const blocksContent = (
+              <div className={vertical && showNav ? 'flex-1 min-w-0' : undefined}>
+                {pageBlocks.map((block, index) => (
+                  <Block
+                    key={block.id}
+                    index={index}
+                    block={block}
+                    listNumber={listNumbers[block.id] || 1}
+                    isLastBlock={block.id === lastBlockId}
+                    isSelected={selectedIds.has(block.id)}
+                    updateBlock={updateBlock}
+                    addBlock={addBlock}
+                    addBlockBefore={addBlockBefore}
+                    addBlockWithContent={addBlockWithContent}
+                    addListBlock={addListBlock}
+                    removeBlock={removeBlock}
+                    mergeWithPrevious={mergeWithPrevious}
+                    setSlashMenu={setSlashMenu}
+                    blockRef={el => (blockRefs.current[block.id] = el)}
+                    onDragStart={handleDragStart}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                    dropTarget={dropTarget}
+                    onHeightChange={handleHeightChange}
+                    onClearSelection={clearSelection}
+                    onBlockFocus={handleBlockFocus}
+                    uploadImage={config.uploadImage}
+                    autoNumber={designAutoNumbers[block.id]}
+                    edgePadding={edgePadding}
+                    isFirstOnPage={index === 0 && !headerNavBlocks}
+                    isLastOnPage={index === pageBlocks.length - 1 && !footerNavBlocks}
+                  />
+                ))}
+              </div>
+            );
+
+            const pageContent = vertical && showNav ? (
+              <div className={`flex gap-3 h-full ${navPosition === 'right' ? 'flex-row-reverse' : ''}`}>
+                {sectionNavElement}
+                {blocksContent}
+              </div>
+            ) : (
+              <>
+                {navPosition === 'header' && sectionNavElement}
+                {blocksContent}
+                {navPosition === 'footer' && sectionNavElement}
+              </>
+            );
+
+            return (
+              <div
+                key={renderIndex}
+                data-page-index={pageIndex}
+                className={viewMode === 'paginated' ? 'bg-white shadow-lg overflow-hidden' : ''}
+                style={paginatedStyle}
+                onClick={e => handlePageClick(e, pageBlocks)}
+              >
+                {pageContent}
+              </div>
+            );
+          })}
 
           {viewMode === 'continuous' && (
             <div className="h-32 -mx-12 cursor-text" onClick={handleBottomClick} />
@@ -562,6 +718,17 @@ const NotionEditorInner: React.FC<{
           )}
         </div>
       </div>
+
+      {hasSections && (
+        <SectionNavPanel
+          sections={sections}
+          isOpen={sectionPanelOpen}
+          onToggle={() => setSectionPanelOpen(prev => !prev)}
+          onScrollTo={scrollToSection}
+          onSetLabel={setCustomLabel}
+          onToggleHidden={toggleHidden}
+        />
+      )}
 
       <SelectionOverlay selectionBox={selectionBox} containerRef={containerRef} />
 

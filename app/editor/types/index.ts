@@ -94,6 +94,63 @@ export interface PageConfig {
   paddingLeft?: number;
 }
 
+// ---------------------------------------------------------------------------
+// Section Navigation configuration
+// ---------------------------------------------------------------------------
+
+/** Where on the page the section nav buttons are rendered */
+export type SectionNavPosition = 'header' | 'footer' | 'left' | 'right';
+
+/** Filter that decides which pages show the section nav */
+export type SectionNavPageFilter =
+  | 'all'
+  | 'none'
+  | number[]
+  | ((pageIndex: number, totalPages: number) => boolean);
+
+/**
+ * HTML template for section nav buttons.
+ *
+ * Active and inactive states have **separate HTML templates** — they can be
+ * completely different designs, not just color swaps.
+ *
+ * Supports placeholders in both templates:
+ *   {{label}}  — button label (custom or truncated original)
+ *   {{number}} — auto-number (e.g. "1", "1.1")
+ *   {{title}}  — original full title text
+ *
+ * Everything is pure HTML + Tailwind — fully serializable (can be stored in DB).
+ *
+ * Example:
+ * ```
+ * {
+ *   activeHtml: '<div class="bg-purple-600 text-white rounded-full px-3 py-1 text-xs font-bold">{{label}}</div>',
+ *   inactiveHtml: '<div class="bg-gray-100 text-gray-400 rounded-full px-3 py-1 text-xs border border-gray-200">{{label}}</div>',
+ * }
+ * ```
+ */
+export interface SectionNavButtonTemplate {
+  /** Full HTML for the button when the heading IS on the current page */
+  activeHtml: string;
+  /** Full HTML for the button when the heading is NOT on the current page */
+  inactiveHtml: string;
+}
+
+export interface SectionNavConfig {
+  /** Position on the page (default: 'header') */
+  position?: SectionNavPosition;
+  /** Which pages show the nav. 'all' | 'none' | number[] | filter fn. Default: 'all' */
+  pages?: SectionNavPageFilter;
+  /** Max visible buttons before collapsing to a single "Sumário" button (default: unlimited) */
+  maxButtons?: number;
+  /** Max characters for button labels before truncating with "..." (default: 16) */
+  maxLabelLength?: number;
+  /** Active color for default buttons (default: '#7c3aed' — purple). Ignored when buttonTemplate is set. */
+  activeColor?: string;
+  /** Custom button template (HTML + Tailwind). Overrides the default pill buttons. Serializable for DB storage. */
+  buttonTemplate?: SectionNavButtonTemplate;
+}
+
 // Editor configuration for customizable values
 export interface EditorConfig {
   /** Page dimensions and padding (paginated mode) */
@@ -108,6 +165,8 @@ export interface EditorConfig {
   uploadImage?: (file: File) => Promise<string | null>;
   /** Initial zoom level (0.1 to 3, default: 1) */
   defaultZoom?: number;
+  /** Section navigation buttons on pages (table-of-contents nav) */
+  sectionNav?: SectionNavConfig;
 }
 
 // Props do Editor principal (para reutilização)

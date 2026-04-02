@@ -56,10 +56,10 @@ export const PAGE_CONTENT_HEIGHT = 950; // Altura útil da página
 export const DEFAULT_PAGE_CONFIG = {
   width: 794,
   height: 1123,
-  paddingTop: 56,
-  paddingRight: 75,
-  paddingBottom: 56,
-  paddingLeft: 75,
+  paddingTop: 0,
+  paddingRight: 0,
+  paddingBottom: 0,
+  paddingLeft: 0,
 } as const;
 
 export type ResolvedPageConfig = Required<PageConfig>;
