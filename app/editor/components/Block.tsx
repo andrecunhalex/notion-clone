@@ -115,13 +115,27 @@ const BlockInner: React.FC<BlockProps> = ({
     if (internalRef.current) {
       blockRef(internalRef.current);
 
+      const el = internalRef.current;
+
       const ro = new ResizeObserver(() => {
-        if (internalRef.current) {
-          onHeightChange(block.id, internalRef.current.offsetHeight);
+        if (el) {
+          // Skip height reporting while an image is being resized to prevent
+          // pagination from moving the block between pages mid-resize
+          if (el.querySelector('[data-resizing]')) return;
+          onHeightChange(block.id, el.offsetHeight);
         }
       });
-      ro.observe(internalRef.current);
-      return () => ro.disconnect();
+      ro.observe(el);
+
+      // Watch for data-resizing removal so we report the final height after resize ends
+      const mo = new MutationObserver(() => {
+        if (el && !el.querySelector('[data-resizing]')) {
+          onHeightChange(block.id, el.offsetHeight);
+        }
+      });
+      mo.observe(el, { subtree: true, attributes: true, attributeFilter: ['data-resizing'] });
+
+      return () => { ro.disconnect(); mo.disconnect(); };
     }
   }, [block.id, onHeightChange, blockRef]);
 

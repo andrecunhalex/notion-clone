@@ -219,6 +219,7 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
     <div
       ref={containerRef}
       className={`my-2 flex ${alignmentStyles[imageData.alignment]}`}
+      data-resizing={isResizing || undefined}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => { if (!isResizing) setIsHovered(false); }}
     >
