@@ -69,8 +69,10 @@ const NotionEditorInner: React.FC<{
     maxLabelLength: navConfig.maxLabelLength,
   });
 
-  // Section panel starts open when there are sections
-  const [sectionPanelOpen, setSectionPanelOpen] = useState(true);
+  // Section panel: desktop starts open, mobile starts closed
+  const [sectionPanelOpen, setSectionPanelOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true
+  );
 
   const {
     selectedIds, setSelectedIds, selectionBox,
@@ -97,7 +99,7 @@ const NotionEditorInner: React.FC<{
     setSelectedIds(new Set(restoredIds));
   }, [redoRaw, setSelectedIds]);
 
-  const { blockHeights, handleHeightChange } = usePagination({ blocks, setBlocks, viewMode, pageContentHeight });
+  const { blockHeights, handleHeightChange, ready: paginationReady } = usePagination({ blocks, setBlocks, viewMode, pageContentHeight });
 
   const { updateBlock, addBlock, addBlockBefore, addBlockWithContent, addListBlock, removeBlock, mergeWithPrevious, moveBlocks } = useBlockManager({
     blocks, setBlocks
@@ -386,7 +388,9 @@ const NotionEditorInner: React.FC<{
     return { listNumbers: listNums, designAutoNumbers: autoNums };
   }, [blocks]);
 
-  // Stable edgePadding ref — stringified key ensures identity only changes when values change
+  // Stable edgePadding ref — uses a stringified key so the object identity only changes
+  // when actual values change. This is critical for Block memo: if edgePadding were a
+  // new object each render, every Block would re-render on every parent update.
   const edgePaddingKey = viewMode === 'paginated'
     ? `p:${pageConfig.paddingTop}:${pageConfig.paddingRight}:${pageConfig.paddingBottom}:${pageConfig.paddingLeft}`
     : 'c:48:48:0:48';
@@ -489,11 +493,16 @@ const NotionEditorInner: React.FC<{
       setZoom(appliedZoom);
     }
 
-    // Center horizontally after zoom is applied
+    // Center horizontally: the container has width=pageConfig.width (unscaled) with mx-auto,
+    // but the browser creates horizontal scroll for the unscaled width.
+    // Center the scroll so the scaled page is visually centered.
     requestAnimationFrame(() => {
-      const scaledWidth = pageConfig.width * appliedZoom;
-      const overflow = scaledWidth - scrollEl.clientWidth;
-      scrollEl.scrollLeft = overflow > 0 ? overflow / 2 : 0;
+      if (!scrollEl) return;
+      const scrollWidth = scrollEl.scrollWidth;
+      const clientWidth = scrollEl.clientWidth;
+      if (scrollWidth > clientWidth) {
+        scrollEl.scrollLeft = (scrollWidth - clientWidth) / 2;
+      }
     });
   }, [viewMode, pageConfig.width, zoom]);
 
@@ -585,13 +594,18 @@ const NotionEditorInner: React.FC<{
         hasTargetBlocks={targetBlockIds.length > 0}
         allTargetsFullWidth={allTargetsFullWidth}
         onToggleFullWidth={toggleFullWidth}
+        hasSections={hasSections}
+        onToggleSectionPanel={() => setSectionPanelOpen(prev => !prev)}
       />
 
+      {/* Scroll container — takes all remaining space below toolbar (flex-1).
+          Starts opacity:0 in paginated mode until block heights are collected,
+          then fades in (duration-200) to avoid the pagination "flicker". */}
       <div
         ref={scrollRef}
-        className={`relative overflow-auto flex-1 min-h-0 ${
-          viewMode === 'paginated' ? 'pt-8 pb-8' : ''
-        }`}
+        className={`relative overflow-y-auto overflow-x-auto flex-1 min-h-0 transition-opacity duration-200 ${
+          viewMode === 'paginated' ? 'pt-4 md:pt-8 pb-8' : ''
+        } ${viewMode === 'paginated' && !paginationReady ? 'opacity-0' : 'opacity-100'}`}
       >
         <div
           ref={containerRef}
@@ -612,7 +626,9 @@ const NotionEditorInner: React.FC<{
           onDrop={handleDrop}
         >
           {renderedPages.map((page, renderIndex) => {
-            // Paginated page style: fixed size, padding creates margins, overflow hidden
+            // Paginated page style: fixed height (never grows), CSS padding for margins,
+            // overflow:hidden clips content that hasn't been moved to the next page yet.
+            // The padding values come from config.page (default: 0 on all sides).
             const paginatedStyle = viewMode === 'paginated' ? {
               width: pageConfig.width,
               height: pageConfig.height,

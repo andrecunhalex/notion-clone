@@ -1,5 +1,19 @@
 'use client';
 
+// ---------------------------------------------------------------------------
+// SectionNav — in-page navigation buttons for document sections
+//
+// Rendered INSIDE each page in paginated mode (position: header/footer/left/right).
+// Each page receives its own `pageBlockIds` set — buttons whose heading is on
+// that page are "active" (colored), others are "inactive" (gray).
+//
+// Supports:
+//   - Default pill buttons with activeColor
+//   - Custom button templates (activeHtml / inactiveHtml) — fully serializable
+//   - Collapsed mode: single "Sumário" button when sections > maxButtons
+//   - Vertical layout for left/right positions
+// ---------------------------------------------------------------------------
+
 import React, { memo, useMemo } from 'react';
 import { SectionNavPosition, SectionNavButtonTemplate } from '../types';
 import { SectionItem } from '../hooks/useSectionNav';

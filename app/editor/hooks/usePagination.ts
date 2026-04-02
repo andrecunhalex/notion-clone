@@ -1,3 +1,22 @@
+// ---------------------------------------------------------------------------
+// usePagination — manages block height tracking and page-break splitting
+//
+// How it works:
+//   1. Each Block component reports its DOM height via handleHeightChange.
+//   2. Heights are stored in a ref (no re-render) and flushed once per frame.
+//   3. On first mount, we wait for all ResizeObserver callbacks (which fire in
+//      the same frame) before doing the first flush. This prevents the "flicker"
+//      where blocks jump between pages as heights arrive one by one.
+//   4. getPaginatedBlocks (in utils/) uses these heights to split blocks into
+//      pages. If a text block overflows a page boundary, the split logic below
+//      breaks it into two blocks using a binary-search + Range API approach.
+//
+// Returns:
+//   - blockHeights: Record<blockId, px> used by getPaginatedBlocks
+//   - handleHeightChange: callback for Block's ResizeObserver
+//   - ready: false until initial heights are collected (editor hides content)
+// ---------------------------------------------------------------------------
+
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { BlockData, ViewMode } from '../types';
 import { generateId, PAGE_CONTENT_HEIGHT, isListType } from '../utils';
@@ -12,49 +31,62 @@ interface UsePaginationProps {
 export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }: UsePaginationProps) => {
   const PAGE_H = pageContentHeight || PAGE_CONTENT_HEIGHT;
   const [blockHeights, setBlockHeights] = useState<Record<string, number>>({});
+  // `ready` starts false — the editor renders with opacity:0 until this flips to true
+  const [ready, setReady] = useState(false);
 
-  // Batch height changes — collect updates and flush once per frame
-  const pendingHeights = useRef<Record<string, number>>({});
+  // Heights accumulate in a ref (zero re-renders) and are flushed to state once per frame
+  const heightsRef = useRef<Record<string, number>>({});
+  const readyRef = useRef(false);
   const flushRaf = useRef(0);
 
   const handleHeightChange = useCallback((id: string, height: number) => {
-    pendingHeights.current[id] = height;
+    // Skip if unchanged — avoids unnecessary RAF scheduling
+    const prev = heightsRef.current[id];
+    if (prev === height) return;
+    heightsRef.current[id] = height;
+
+    if (!readyRef.current) {
+      // FIRST MOUNT: schedule a single RAF. Browsers fire all ResizeObserver
+      // callbacks synchronously before the next paint, so by the time this RAF
+      // runs, every block will have reported its height. Result: one flush,
+      // one render, zero flicker.
+      if (!flushRaf.current) {
+        flushRaf.current = requestAnimationFrame(() => {
+          flushRaf.current = 0;
+          readyRef.current = true;
+          setBlockHeights({ ...heightsRef.current });
+          setReady(true);
+        });
+      }
+      return;
+    }
+
+    // STEADY STATE: batch all height changes within a frame into one setState
     if (!flushRaf.current) {
       flushRaf.current = requestAnimationFrame(() => {
         flushRaf.current = 0;
-        const batch = pendingHeights.current;
-        pendingHeights.current = {};
-        setBlockHeights(prev => {
-          let changed = false;
-          for (const key in batch) {
-            if (prev[key] !== batch[key]) { changed = true; break; }
-          }
-          if (!changed) return prev;
-          return { ...prev, ...batch };
-        });
+        setBlockHeights({ ...heightsRef.current });
       });
     }
   }, []);
 
-  // Guard against infinite loops: skip if we just split
+  // --- Overflow Split: auto-break text blocks that exceed page height ---
+  // Guard against infinite loops: skip if we just split this block
   const lastSplitRef = useRef<string | null>(null);
   const setBlocksRef = useRef(setBlocks);
   setBlocksRef.current = setBlocks;
 
-  // Quebra automática de página (Overflow Split)
+  // Overflow split (text blocks that exceed page height)
   useEffect(() => {
-    if (viewMode !== 'paginated') return;
+    if (viewMode !== 'paginated' || !readyRef.current) return;
 
     let currentH = 0;
     let splitAction: { id: string; splitPoint: number } | null = null;
 
-    // Simula paginação para encontrar overflow
     for (const block of blocks) {
       const h = blockHeights[block.id] || 24;
-
       const canSplit = block.type === 'text' || isListType(block.type);
 
-      // Bloco maior que página inteira - tenta quebrar se for texto/lista (não tabela)
       if (h >= PAGE_H && canSplit) {
         splitAction = { id: block.id, splitPoint: PAGE_H - 50 };
         break;
@@ -62,13 +94,10 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
 
       if (currentH + h > PAGE_H) {
         const availableH = PAGE_H - currentH;
-
-        // Quebra se for texto/lista, houver espaço (>50px) e o bloco for maior que o espaço
         if (canSplit && availableH > 50 && h > availableH) {
           splitAction = { id: block.id, splitPoint: availableH };
           break;
         }
-        // Nova página
         currentH = h;
       } else {
         currentH += h;
@@ -77,8 +106,6 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
 
     if (splitAction) {
       const { id, splitPoint } = splitAction;
-
-      // Guard: don't split the same block twice in a row (prevents infinite loop)
       if (lastSplitRef.current === id) return;
 
       const el = document.getElementById(`editable-${id}`);
@@ -86,7 +113,6 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
 
       const htmlContent = el.innerHTML;
 
-      // Create measurement clone preserving HTML formatting
       const measure = document.createElement('div');
       measure.style.cssText = window.getComputedStyle(el).cssText;
       measure.style.position = 'absolute';
@@ -95,7 +121,6 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
       measure.innerHTML = htmlContent;
       document.body.appendChild(measure);
 
-      // Collect all text nodes for character-level splitting
       const textNodes: Text[] = [];
       const tw = document.createTreeWalker(measure, NodeFilter.SHOW_TEXT);
       while (tw.nextNode()) textNodes.push(tw.currentNode as Text);
@@ -103,7 +128,6 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
       const savedTexts = textNodes.map(n => n.textContent || '');
       const totalLen = savedTexts.reduce((sum, t) => sum + t.length, 0);
 
-      // Truncate visible text at a global character index (preserving HTML tags)
       const truncateAt = (idx: number) => {
         let remaining = idx;
         for (let i = 0; i < textNodes.length; i++) {
@@ -122,7 +146,6 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
         for (let i = 0; i < textNodes.length; i++) textNodes[i].textContent = savedTexts[i];
       };
 
-      // Binary search for the largest character count that fits
       let low = 0, high = totalLen, bestIndex = -1;
       while (low <= high) {
         const mid = Math.floor((low + high) / 2);
@@ -138,9 +161,7 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
       restoreAll();
       document.body.removeChild(measure);
 
-      // Só aplica se o corte for útil (não nas bordas extremas)
       if (bestIndex > 5 && bestIndex < totalLen - 5) {
-        // Use Range API to split HTML properly (auto-closes/opens tags at boundaries)
         const extract = document.createElement('div');
         extract.innerHTML = htmlContent;
 
@@ -148,7 +169,6 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
         const tw2 = document.createTreeWalker(extract, NodeFilter.SHOW_TEXT);
         while (tw2.nextNode()) textNodes2.push(tw2.currentNode as Text);
 
-        // Map global char index to a specific text node + offset
         let remaining = bestIndex;
         let splitNode: Text = textNodes2[0];
         let splitOffset = 0;
@@ -162,7 +182,6 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
           remaining -= len;
         }
 
-        // Part 1: from start to split point
         const range1 = document.createRange();
         range1.setStartBefore(extract.firstChild!);
         range1.setEnd(splitNode, splitOffset);
@@ -170,7 +189,6 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
         div1.appendChild(range1.cloneContents());
         const part1 = div1.innerHTML;
 
-        // Part 2: from split point to end
         const range2 = document.createRange();
         range2.setStart(splitNode, splitOffset);
         range2.setEndAfter(extract.lastChild!);
@@ -189,7 +207,6 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
         lastSplitRef.current = id;
         setBlocksRef.current(newBlocks);
 
-        // Joga o foco para o novo bloco na próxima página (sem scroll)
         requestAnimationFrame(() => {
           const nextEl = document.getElementById(`editable-${newBlock2.id}`);
           if (nextEl) nextEl.focus({ preventScroll: true });
@@ -198,5 +215,5 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
     }
   }, [blockHeights, blocks, viewMode]);
 
-  return { blockHeights, handleHeightChange };
+  return { blockHeights, handleHeightChange, ready };
 };

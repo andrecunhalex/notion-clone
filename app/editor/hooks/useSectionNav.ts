@@ -1,5 +1,22 @@
 'use client';
 
+// ---------------------------------------------------------------------------
+// useSectionNav — extracts document sections (headings + numbered design blocks)
+//
+// Sections are derived from:
+//   - h1, h2, h3 blocks → heading / subheading levels
+//   - Design blocks with autonumber: 'heading' or 'subheading' (from registry)
+//
+// Provides:
+//   - sections: SectionItem[] with auto-numbering, custom labels, visibility
+//   - scrollToSection: smooth-scrolls the scroll container to the block
+//   - setCustomLabel / toggleHidden: persist button labels in document metadata
+//   - hasSections: true when at least one section exists
+//
+// Section metadata (custom labels, hidden IDs) is stored in the document meta
+// under the key `sectionNav` and syncs with Yjs in collaboration mode.
+// ---------------------------------------------------------------------------
+
 import { useCallback, useMemo } from 'react';
 import { BlockData } from '../types';
 import { getTemplate } from '../components/designBlocks';
