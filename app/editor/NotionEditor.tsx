@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig } from './types';
-import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty, getListNumber, resolvePageConfig, getContentHeight } from './utils';
+import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty, resolvePageConfig, getContentHeight } from './utils';
 import {
   useBlockManager,
   useSelection,
@@ -337,36 +337,53 @@ const NotionEditorInner: React.FC<{
     }
   }, []);
 
-  // Pre-compute list numbers for all blocks to avoid passing the entire blocks array to Block
-  const listNumbers = useMemo(() => {
-    const map: Record<string, number> = {};
-    blocks.forEach((block, idx) => {
-      if (block.type === 'numbered_list') {
-        map[block.id] = getListNumber(block, blocks, idx);
-      }
-    });
-    return map;
-  }, [blocks]);
-
-  // Pre-compute auto-numbers for design blocks (heading: 1,2,3  subheading: 1.1,1.2,2.1)
-  const designAutoNumbers = useMemo(() => {
-    const map: Record<string, string> = {};
+  // Single-pass pre-computation: list numbers + design auto-numbers
+  // Combines what were separate O(n) iterations into one pass
+  const { listNumbers, designAutoNumbers } = useMemo(() => {
+    const listNums: Record<string, number> = {};
+    const autoNums: Record<string, string> = {};
     let headingCount = 0;
     let subCount = 0;
-    for (const block of blocks) {
-      if (block.type !== 'design_block' || !block.designBlockData) continue;
-      const tpl = getTemplate(block.designBlockData.templateId);
-      if (!tpl?.autonumber) continue;
-      if (tpl.autonumber === 'heading') {
-        headingCount++;
-        subCount = 0;
-        map[block.id] = String(headingCount);
-      } else if (tpl.autonumber === 'subheading') {
-        subCount++;
-        map[block.id] = `${headingCount || 1}.${subCount}`;
+
+    // List number tracking per indent level
+    const listCounters: number[] = [0, 0, 0, 0];
+    let prevType: string | null = null;
+    let prevIndent = 0;
+
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+
+      // List numbers — matches getListNumber logic but forward-scan O(1) per block
+      if (block.type === 'numbered_list') {
+        const indent = block.indent ?? 0;
+        if (prevType !== 'numbered_list') {
+          // Non-list break: reset all levels
+          listCounters.fill(0);
+        } else if (indent > prevIndent) {
+          // Deeper indent: reset this level
+          listCounters[indent] = 0;
+        }
+        listCounters[indent]++;
+        listNums[block.id] = listCounters[indent];
+      }
+      prevType = block.type;
+      prevIndent = block.indent ?? 0;
+
+      // Design block auto-numbers
+      if (block.type === 'design_block' && block.designBlockData) {
+        const tpl = getTemplate(block.designBlockData.templateId);
+        if (tpl?.autonumber === 'heading') {
+          headingCount++;
+          subCount = 0;
+          autoNums[block.id] = String(headingCount);
+        } else if (tpl?.autonumber === 'subheading') {
+          subCount++;
+          autoNums[block.id] = `${headingCount || 1}.${subCount}`;
+        }
       }
     }
-    return map;
+
+    return { listNumbers: listNums, designAutoNumbers: autoNums };
   }, [blocks]);
 
   // Stable edgePadding ref — stringified key ensures identity only changes when values change
