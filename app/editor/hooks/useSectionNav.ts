@@ -82,8 +82,6 @@ interface UseSectionNavOptions {
   setSectionNavMeta: (meta: SectionNavMeta) => void;
   /** Ref to the scroll container (for manual scroll calculation with zoom) */
   scrollRef: React.RefObject<HTMLElement | null>;
-  /** Current zoom level (needed to calculate correct scroll position) */
-  zoom: number;
   /** Maximum characters for button labels (default: 16) */
   maxLabelLength?: number;
 }
@@ -93,7 +91,6 @@ export function useSectionNav({
   sectionNavMeta,
   setSectionNavMeta,
   scrollRef,
-  zoom,
   maxLabelLength = 16,
 }: UseSectionNavOptions) {
   // Build section items with auto-numbering

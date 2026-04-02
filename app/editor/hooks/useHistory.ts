@@ -53,12 +53,13 @@ export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBO
     lastEditTime.current = now;
 
     // Detect structural changes (add/remove/reorder blocks) to break debounce
+    // Use length + first/last ID as a cheap fingerprint instead of joining all IDs
     let structureChanged = false;
     if (newState && typeof newState === 'object' && 'blocks' in (newState as Record<string, unknown>)) {
       const blocks = (newState as unknown as { blocks: { id: string }[] }).blocks;
-      const fingerprint = blocks.map(b => b.id).join(',');
+      const fingerprint = `${blocks.length}:${blocks[0]?.id || ''}:${blocks[blocks.length - 1]?.id || ''}`;
       if (fingerprint !== lastBlockFingerprintRef.current) {
-        structureChanged = lastBlockFingerprintRef.current !== ''; // skip first call
+        structureChanged = lastBlockFingerprintRef.current !== '';
         lastBlockFingerprintRef.current = fingerprint;
       }
     }

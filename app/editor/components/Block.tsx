@@ -240,8 +240,6 @@ const BlockInner: React.FC<BlockProps> = ({
   const isImage = block.type === 'image';
   const isDesignBlock = block.type === 'design_block';
   const isFullWidth = !!block.fullWidth;
-  const isNonTextBlock = isTable || isDivider || isImage || isDesignBlock;
-
   const contentStyle = BLOCK_INLINE_STYLES[block.type];
   const alignStyle = block.align ? { ...contentStyle, textAlign: block.align as React.CSSProperties['textAlign'] } : contentStyle;
 

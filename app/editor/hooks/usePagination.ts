@@ -13,11 +13,27 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
   const PAGE_H = pageContentHeight || PAGE_CONTENT_HEIGHT;
   const [blockHeights, setBlockHeights] = useState<Record<string, number>>({});
 
+  // Batch height changes — collect updates and flush once per frame
+  const pendingHeights = useRef<Record<string, number>>({});
+  const flushRaf = useRef(0);
+
   const handleHeightChange = useCallback((id: string, height: number) => {
-    setBlockHeights(prev => {
-      if (prev[id] === height) return prev;
-      return { ...prev, [id]: height };
-    });
+    pendingHeights.current[id] = height;
+    if (!flushRaf.current) {
+      flushRaf.current = requestAnimationFrame(() => {
+        flushRaf.current = 0;
+        const batch = pendingHeights.current;
+        pendingHeights.current = {};
+        setBlockHeights(prev => {
+          let changed = false;
+          for (const key in batch) {
+            if (prev[key] !== batch[key]) { changed = true; break; }
+          }
+          if (!changed) return prev;
+          return { ...prev, ...batch };
+        });
+      });
+    }
   }, []);
 
   // Guard against infinite loops: skip if we just split

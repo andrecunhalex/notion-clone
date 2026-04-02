@@ -75,7 +75,7 @@ function CollaborativeEditor() {
           sectionNav: {
             position: 'header',
             pages: 'all',
-            maxButtons: 6,
+            maxButtons: 5,
             activeColor: '#7c3aed',
             maxLabelLength: 12,
             buttonTemplate: {

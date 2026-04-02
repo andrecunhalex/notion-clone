@@ -8,9 +8,13 @@ import { CollaborationConfig, CursorPosition, RemoteUser, SyncStatus } from './t
 // ---------------------------------------------------------------------------
 
 function uint8ToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
+  // Use chunk-based approach to avoid stack overflow on large arrays
+  const CHUNK = 0x8000;
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    parts.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
+  }
+  return btoa(parts.join(''));
 }
 
 function base64ToUint8(base64: string): Uint8Array {
@@ -275,8 +279,14 @@ export class SupabaseProvider {
 
   private async _persistToSupabase() {
     try {
-      // Always save full state (DB is source of truth for new peers)
-      // but use V2 encoding which is more compact (~20-40% smaller)
+      // Skip save if nothing changed since last persistence
+      const currentVector = Y.encodeStateVector(this.doc);
+      if (this._lastSavedStateVector) {
+        const diff = Y.encodeStateAsUpdate(this.doc, this._lastSavedStateVector);
+        // Yjs diff with no changes produces a small header (~4 bytes). Skip if trivial.
+        if (diff.length <= 4) return;
+      }
+
       const fullState = Y.encodeStateAsUpdate(this.doc);
       const { error } = await this.supabase
         .from('documents')
@@ -286,8 +296,7 @@ export class SupabaseProvider {
           updated_at: new Date().toISOString(),
         });
       if (error) throw error;
-      // Update stateVector after successful save
-      this._lastSavedStateVector = Y.encodeStateVector(this.doc);
+      this._lastSavedStateVector = currentVector;
     } catch (err) {
       console.warn('[collaboration] Failed to save to Supabase:', err);
     }

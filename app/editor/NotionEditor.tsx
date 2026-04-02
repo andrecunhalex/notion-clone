@@ -15,7 +15,7 @@ import {
 import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar, SectionNav, SectionTocPage } from './components';
 import { SectionNavPanel } from './components/SectionNavPanel';
 import type { SectionNavMeta } from './hooks/useSectionNav';
-import { getTemplate, DESIGN_TEMPLATES } from './components/designBlocks';
+import { getTemplate } from './components/designBlocks';
 import { FontLoader } from './components/FontLoader';
 import { SYSTEM_FONTS } from './fonts';
 import { EditorProvider, EditorDataSource, useLocalDataSource } from './EditorProvider';
@@ -65,7 +65,7 @@ const NotionEditorInner: React.FC<{
   const {
     sections, scrollToSection, setCustomLabel, toggleHidden, hasSections,
   } = useSectionNav({
-    blocks, sectionNavMeta, setSectionNavMeta, scrollRef, zoom,
+    blocks, sectionNavMeta, setSectionNavMeta, scrollRef,
     maxLabelLength: navConfig.maxLabelLength,
   });
 
@@ -99,7 +99,7 @@ const NotionEditorInner: React.FC<{
 
   const { blockHeights, handleHeightChange } = usePagination({ blocks, setBlocks, viewMode, pageContentHeight });
 
-  const { updateBlock, addBlock, addBlockBefore, addBlockWithContent, addListBlock, removeBlock, mergeWithPrevious, deleteSelectedBlocks, moveBlocks } = useBlockManager({
+  const { updateBlock, addBlock, addBlockBefore, addBlockWithContent, addListBlock, removeBlock, mergeWithPrevious, moveBlocks } = useBlockManager({
     blocks, setBlocks
   });
 
@@ -369,13 +369,16 @@ const NotionEditorInner: React.FC<{
     return map;
   }, [blocks]);
 
+  // Stable edgePadding ref — stringified key ensures identity only changes when values change
+  const edgePaddingKey = viewMode === 'paginated'
+    ? `p:${pageConfig.paddingTop}:${pageConfig.paddingRight}:${pageConfig.paddingBottom}:${pageConfig.paddingLeft}`
+    : 'c:48:48:0:48';
   const edgePadding = useMemo(() => {
     if (viewMode === 'paginated') {
       return { top: pageConfig.paddingTop, right: pageConfig.paddingRight, bottom: pageConfig.paddingBottom, left: pageConfig.paddingLeft };
     }
-    // continuous mode: px-12 = 3rem = 48px, mt-12 = 48px
     return { top: 48, right: 48, bottom: 0, left: 48 };
-  }, [viewMode, pageConfig.paddingTop, pageConfig.paddingRight, pageConfig.paddingBottom, pageConfig.paddingLeft]);
+  }, [edgePaddingKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleBlockFocus = useCallback((blockId: string | null) => {
     activeBlockIdRef.current = blockId;
