@@ -43,7 +43,7 @@ export default function Home() {
 }
 
 function CollaborativeEditor() {
-  const { dataSource, remoteUsers, syncStatus } = useCollaborativeEditor({
+  const { dataSource, remoteUsers, syncStatus, saveNow } = useCollaborativeEditor({
     config: {
       supabaseUrl: SUPABASE_URL!,
       supabaseAnonKey: SUPABASE_ANON_KEY!,
@@ -70,6 +70,7 @@ function CollaborativeEditor() {
         dataSource={dataSource}
         remoteUsers={remoteUsers}
         syncStatus={syncStatus}
+        onSaveNow={saveNow}
         config={{ 
           uploadImage: handleUploadImage,
           sectionNav: {

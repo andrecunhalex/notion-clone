@@ -185,4 +185,6 @@ export interface NotionEditorProps {
   remoteUsers?: { id: string; name: string; color: string; cursor?: { blockId: string } | null }[];
   /** Sync status for toolbar indicator */
   syncStatus?: 'disconnected' | 'connecting' | 'connected' | 'synced';
+  /** Manual save callback (e.g. for Ctrl+S) */
+  onSaveNow?: () => Promise<void>;
 }

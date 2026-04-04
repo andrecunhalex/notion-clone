@@ -32,6 +32,7 @@ interface ToolbarProps {
   onDocumentFontChange: (family: string) => void;
   remoteUsers?: PresenceUser[];
   syncStatus?: 'disconnected' | 'connecting' | 'connected' | 'synced';
+  showSaved?: boolean;
   followingUserId?: string | null;
   onFollowUser?: (userId: string | null) => void;
   zoom?: number;
@@ -57,6 +58,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onDocumentFontChange,
   remoteUsers,
   syncStatus,
+  showSaved,
   followingUserId,
   onFollowUser,
   zoom = 1,
@@ -174,7 +176,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </>
         )}
 
-        {hasCollab && syncStatus && <SyncDot status={syncStatus} />}
+        {hasCollab && syncStatus && <SyncDot status={syncStatus} showSaved={showSaved} />}
         {hasCollab && <div className="w-px h-4 bg-gray-200 mx-1" />}
 
         {/* Font selector */}
@@ -263,7 +265,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </div>
         )}
 
-        {hasCollab && syncStatus && <SyncDot status={syncStatus} />}
+        {hasCollab && syncStatus && <SyncDot status={syncStatus} showSaved={showSaved} />}
 
         {/* Undo/Redo always visible */}
         <button onClick={onUndo} disabled={!canUndo} className="p-1.5 hover:bg-gray-100 rounded disabled:opacity-30">
@@ -351,7 +353,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 };
 
 // Small sync indicator dot
-const SyncDot: React.FC<{ status: string }> = ({ status }) => {
+const SyncDot: React.FC<{ status: string; showSaved?: boolean }> = ({ status, showSaved }) => {
   const colors: Record<string, string> = {
     disconnected: '#ef4444',
     connecting: '#f59e0b',
@@ -367,6 +369,9 @@ const SyncDot: React.FC<{ status: string }> = ({ status }) => {
   return (
     <div className="flex items-center gap-1.5" title={labels[status] || ''}>
       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors[status] || '#9ca3af' }} />
+      {showSaved && (
+        <span className="text-xs text-green-600 animate-pulse">Salvo!</span>
+      )}
     </div>
   );
 };

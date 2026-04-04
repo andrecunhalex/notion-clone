@@ -31,7 +31,8 @@ const NotionEditorInner: React.FC<{
   onBlockFocus?: (blockId: string | null) => void;
   remoteUsers?: { id: string; name: string; color: string; cursor?: { blockId: string } | null }[];
   syncStatus?: 'disconnected' | 'connecting' | 'connected' | 'synced';
-}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus }) => {
+  onSaveNow?: () => Promise<void>;
+}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus, onSaveNow }) => {
   const { blocks, setBlocks: setBlocksRaw, undo: undoRaw, redo: redoRaw, canUndo, canRedo, meta, setMeta } = dataSource;
 
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
@@ -118,6 +119,29 @@ const NotionEditorInner: React.FC<{
     blocks, setBlocks, selectedIds, setSelectedIds,
     undo, redo, handleCopy, handlePaste
   });
+
+  // Ctrl/Cmd+S → manual save + brief "Salvo!" indicator (throttled to 1 save per 2s)
+  const [showSaved, setShowSaved] = useState(false);
+  const savingRef = useRef(false);
+  useEffect(() => {
+    if (!onSaveNow) return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (savingRef.current) return;
+        savingRef.current = true;
+        onSaveNow().then(() => {
+          setShowSaved(true);
+          setTimeout(() => {
+            setShowSaved(false);
+            savingRef.current = false;
+          }, 2000);
+        });
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onSaveNow]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -587,6 +611,7 @@ const NotionEditorInner: React.FC<{
         onDocumentFontChange={setDocumentFont}
         remoteUsers={remoteUsers}
         syncStatus={syncStatus}
+        showSaved={showSaved}
         followingUserId={followingUserId}
         onFollowUser={setFollowingUserId}
         zoom={zoom}
@@ -793,6 +818,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   onBlockFocus,
   remoteUsers,
   syncStatus,
+  onSaveNow,
 }) => {
   const localDataSource = useLocalDataSource(initialBlocks, config.historyDebounceMs);
   const noopSetMeta = useCallback(() => {}, []);
@@ -818,6 +844,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           onBlockFocus={onBlockFocus}
           remoteUsers={remoteUsers}
           syncStatus={syncStatus}
+          onSaveNow={onSaveNow}
         />
       </EditorProvider>
     </FontLoader>

@@ -71,7 +71,7 @@ export class SupabaseProvider {
   private _lastSavedStateVector: Uint8Array | null = null;
 
   // beforeunload handler reference
-  private _beforeUnloadHandler: (() => void) | null = null;
+  private _beforeUnloadHandler: ((e: Event) => void) | null = null;
 
   // Solo-mode: skip broadcasts when no one else is in the document
   private _hasRemotePeers = false;
@@ -134,7 +134,7 @@ export class SupabaseProvider {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     if (this._cursorTimer) clearTimeout(this._cursorTimer);
     if (this._beforeUnloadHandler && typeof window !== 'undefined') {
-      window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+      window.removeEventListener('beforeunload', this._beforeUnloadHandler as EventListener);
     }
     this.doc.off('update', this._onDocUpdate);
     this.channel.untrack();
@@ -195,13 +195,17 @@ export class SupabaseProvider {
 
     this.doc.on('update', this._onDocUpdate);
 
-    // Clean up presence immediately when tab closes
     if (typeof window !== 'undefined') {
-      this._beforeUnloadHandler = () => {
+      // Warn user if they try to close with unsaved changes
+      this._beforeUnloadHandler = (e: Event) => {
+        if (this.saveTimer) {
+          // There are unsaved changes — show native "Leave site?" dialog
+          e.preventDefault();
+        }
         this.channel.untrack();
         this.channel.unsubscribe();
       };
-      window.addEventListener('beforeunload', this._beforeUnloadHandler);
+      window.addEventListener('beforeunload', this._beforeUnloadHandler as EventListener);
     }
   }
 
@@ -254,6 +258,7 @@ export class SupabaseProvider {
   private _debouncedSave() {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
       this._persistToSupabase().catch(() => {});
     }, SAVE_DEBOUNCE_MS);
   }
@@ -267,8 +272,54 @@ export class SupabaseProvider {
         .maybeSingle();
       if (error) throw error;
       if (data?.yjs_state) {
-        const update = base64ToUint8(data.yjs_state);
-        Y.applyUpdate(this.doc, update, 'supabase-load');
+        const remoteUpdate = base64ToUint8(data.yjs_state);
+
+        // Determine if local (IndexedDB) state has unsaved changes that
+        // Supabase doesn't know about yet.  We do this BEFORE merging.
+        const tempDoc = new Y.Doc();
+        Y.applyUpdate(tempDoc, remoteUpdate);
+        const remoteVector = Y.encodeStateVector(tempDoc);
+        const localOnlyDiff = Y.encodeStateAsUpdate(this.doc, remoteVector);
+        // A trivial diff (≤ 4 bytes header) means Supabase already contains
+        // everything the local cache has — so Supabase is strictly authoritative.
+        const hasUnsavedLocalChanges = localOnlyDiff.length > 4;
+
+        // Standard CRDT merge — preserves state vectors so realtime keeps working.
+        Y.applyUpdate(this.doc, remoteUpdate, 'supabase-load');
+
+        // If local had no unsaved changes, clean up any stale blocks that the
+        // CRDT merge resurrected from the IndexedDB cache.
+        if (!hasUnsavedLocalChanges) {
+          const remoteBlocks = tempDoc.getArray<Y.Map<unknown>>('blocks');
+          const remoteIds = new Set<string>();
+          for (const yMap of remoteBlocks.toArray()) {
+            remoteIds.add(yMap.get('id') as string);
+          }
+
+          const yBlocks = this.doc.getArray<Y.Map<unknown>>('blocks');
+          const toDelete: number[] = [];
+          const seen = new Set<string>();
+          for (let i = 0; i < yBlocks.length; i++) {
+            const blockId = yBlocks.get(i).get('id') as string;
+            // Remove blocks not in Supabase, and deduplicate
+            if (!remoteIds.has(blockId) || seen.has(blockId)) {
+              toDelete.push(i);
+            }
+            seen.add(blockId);
+          }
+
+          if (toDelete.length > 0) {
+            this.doc.transact(() => {
+              for (let j = toDelete.length - 1; j >= 0; j--) {
+                yBlocks.delete(toDelete[j], 1);
+              }
+            }, 'supabase-load');
+            // Persist the cleanup so other clients don't repeat it
+            this._debouncedSave();
+          }
+        }
+
+        tempDoc.destroy();
       }
       // Snapshot the stateVector after loading — used for incremental saves
       this._lastSavedStateVector = Y.encodeStateVector(this.doc);

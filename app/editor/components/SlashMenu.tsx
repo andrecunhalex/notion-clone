@@ -323,7 +323,7 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
       {/* Design templates submenu — rendered outside scroll area via fixed position */}
       {showDesignSubmenu && submenuPos && (
         <div
-          className="fixed w-64 bg-white shadow-xl border border-gray-200 rounded-lg py-1.5 z-[60]"
+          className="fixed w-64 bg-white shadow-xl border border-gray-200 rounded-lg py-1.5 z-60"
           style={{ left: submenuPos.left, top: submenuPos.top }}
           onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
           onMouseEnter={() => {
