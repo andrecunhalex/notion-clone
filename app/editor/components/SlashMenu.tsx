@@ -147,15 +147,29 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
   }, [onSelect]);
 
   // Helper to open submenu and calculate position
+  const submenuRef = useRef<HTMLDivElement>(null);
   const openSubmenu = useCallback(() => {
     setShowDesignSubmenu(true);
     setSubmenuIndex(0);
     setInSubmenu(false);
+    // Position after render so we can measure the submenu height
     requestAnimationFrame(() => {
-      if (designTriggerRef.current) {
-        const rect = designTriggerRef.current.getBoundingClientRect();
-        setSubmenuPos({ left: rect.right + 4, top: rect.top });
-      }
+      if (!designTriggerRef.current) return;
+      const triggerRect = designTriggerRef.current.getBoundingClientRect();
+      const left = triggerRect.right + 4;
+      let top = triggerRect.top;
+      // After the submenu renders, adjust if it overflows the viewport
+      requestAnimationFrame(() => {
+        if (submenuRef.current) {
+          const subRect = submenuRef.current.getBoundingClientRect();
+          if (top + subRect.height > window.innerHeight - 8) {
+            top = Math.max(8, window.innerHeight - subRect.height - 8);
+          }
+          setSubmenuPos({ left, top });
+        } else {
+          setSubmenuPos({ left, top });
+        }
+      });
     });
   }, []);
 
@@ -321,10 +335,16 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
       </div>
 
       {/* Design templates submenu — rendered outside scroll area via fixed position */}
-      {showDesignSubmenu && submenuPos && (
+      {showDesignSubmenu && (
         <div
-          className="fixed w-64 bg-white shadow-xl border border-gray-200 rounded-lg py-1.5 z-60"
-          style={{ left: submenuPos.left, top: submenuPos.top }}
+          ref={submenuRef}
+          className="fixed w-64 bg-white shadow-xl border border-gray-200 rounded-lg py-1.5 z-60 overflow-y-auto"
+          style={{
+            left: submenuPos?.left ?? -9999,
+            top: submenuPos?.top ?? -9999,
+            maxHeight: 'calc(100vh - 16px)',
+            visibility: submenuPos ? 'visible' : 'hidden',
+          }}
           onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
           onMouseEnter={() => {
             if (submenuTimerRef.current) clearTimeout(submenuTimerRef.current);
