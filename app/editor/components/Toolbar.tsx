@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { RotateCcw, RotateCw, FileText, Scroll, ChevronDown, X, ZoomIn, ZoomOut, MoveHorizontal, MoreHorizontal, List } from 'lucide-react';
 import { ViewMode } from '../types';
+import { SIZE_PRESETS, DEFAULT_FONT_SIZE } from '../fonts';
 import { useFonts } from './FontLoader';
 
 // ---------------------------------------------------------------------------
@@ -30,6 +31,8 @@ interface ToolbarProps {
   onToggleViewMode: () => void;
   documentFont: string;
   onDocumentFontChange: (family: string) => void;
+  documentFontSize: number;
+  onDocumentFontSizeChange: (size: number) => void;
   remoteUsers?: PresenceUser[];
   syncStatus?: 'disconnected' | 'connecting' | 'connected' | 'synced';
   showSaved?: boolean;
@@ -56,6 +59,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onToggleViewMode,
   documentFont,
   onDocumentFontChange,
+  documentFontSize,
+  onDocumentFontSizeChange,
   remoteUsers,
   syncStatus,
   showSaved,
@@ -71,19 +76,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 }) => {
   const { allFonts, customFonts } = useFonts();
   const [fontOpen, setFontOpen] = useState(false);
+  const [sizeOpen, setSizeOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [customSizeValue, setCustomSizeValue] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const sizeDropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!fontOpen && !mobileMenuOpen) return;
+    if (!fontOpen && !sizeOpen && !mobileMenuOpen) return;
     const handler = (e: MouseEvent) => {
       if (fontOpen && !dropdownRef.current?.contains(e.target as Node)) setFontOpen(false);
+      if (sizeOpen && !sizeDropdownRef.current?.contains(e.target as Node)) { setSizeOpen(false); setCustomSizeValue(''); }
       if (mobileMenuOpen && !mobileMenuRef.current?.contains(e.target as Node)) setMobileMenuOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [fontOpen, mobileMenuOpen]);
+  }, [fontOpen, sizeOpen, mobileMenuOpen]);
 
   const currentFontName = allFonts.find(f => f.family === documentFont)?.name || 'Padrão';
   const hasCollab = remoteUsers !== undefined;
@@ -196,6 +205,55 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           )}
         </div>
 
+        {/* Font size selector */}
+        <div ref={sizeDropdownRef} className="relative">
+          <button
+            className={`flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 text-gray-600 text-xs transition-colors ${sizeOpen ? 'bg-gray-100' : ''}`}
+            onClick={() => { setSizeOpen(!sizeOpen); setFontOpen(false); setCustomSizeValue(''); }}
+            title="Tamanho da fonte do documento"
+          >
+            <span className="tabular-nums">{documentFontSize}px</span>
+            <ChevronDown size={12} />
+          </button>
+          {sizeOpen && (
+            <div className="absolute right-0 top-full mt-1 bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-40 max-h-75 overflow-y-auto z-50">
+              <div className="px-3 py-1.5 border-b border-gray-100">
+                <input
+                  type="number"
+                  min={8}
+                  max={200}
+                  placeholder="Tamanho..."
+                  value={customSizeValue}
+                  onChange={e => setCustomSizeValue(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const val = parseInt(customSizeValue, 10);
+                      if (val >= 8 && val <= 200) {
+                        onDocumentFontSizeChange(val);
+                        setSizeOpen(false);
+                        setCustomSizeValue('');
+                      }
+                    }
+                  }}
+                  className="w-full text-sm border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-400"
+                />
+              </div>
+              {SIZE_PRESETS.map(s => (
+                <button
+                  key={s}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between ${
+                    documentFontSize === s ? 'bg-gray-50 text-blue-600' : 'text-gray-700'
+                  }`}
+                  onClick={() => { onDocumentFontSizeChange(s); setSizeOpen(false); }}
+                >
+                  <span>{s === DEFAULT_FONT_SIZE ? `${s} (padrão)` : s}</span>
+                  {documentFontSize === s && <span className="text-blue-500 text-xs">&#10003;</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="w-px h-4 bg-gray-200 mx-1" />
 
         <button onClick={onUndo} disabled={!canUndo} className="p-1 hover:bg-gray-100 rounded disabled:opacity-30" title="Desfazer">
@@ -290,6 +348,25 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               <div className="px-3 py-1.5 text-xs text-gray-400 uppercase tracking-wider">Fonte</div>
               <div className="max-h-32 overflow-y-auto">
                 {fontList((f) => { onDocumentFontChange(f); setMobileMenuOpen(false); })}
+              </div>
+
+              <div className="border-t border-gray-100 my-1" />
+
+              {/* Font size */}
+              <div className="px-3 py-1.5 text-xs text-gray-400 uppercase tracking-wider">Tamanho</div>
+              <div className="max-h-32 overflow-y-auto">
+                {SIZE_PRESETS.map(s => (
+                  <button
+                    key={s}
+                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between ${
+                      documentFontSize === s ? 'bg-gray-50 text-blue-600' : 'text-gray-700'
+                    }`}
+                    onClick={() => { onDocumentFontSizeChange(s); setMobileMenuOpen(false); }}
+                  >
+                    <span>{s === DEFAULT_FONT_SIZE ? `${s} (padrão)` : s}</span>
+                    {documentFontSize === s && <span className="text-blue-500 text-xs">&#10003;</span>}
+                  </button>
+                ))}
               </div>
 
               <div className="border-t border-gray-100 my-1" />

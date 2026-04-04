@@ -161,7 +161,7 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
                       data-table-cell={`${block.id}-${rowIdx}-${colIdx}`}
                       contentEditable
                       suppressContentEditableWarning
-                      className="outline-none px-2 py-1.5 text-sm min-h-7 wrap-break-word"
+                      className="outline-none px-2 py-1.5 min-h-7 wrap-break-word"
                       style={{ color: cell.textColor || '#374151' }}
                       onContextMenu={e => handleContextMenu(e, rowIdx, colIdx)}
                       onInput={e => handleCellInput(rowIdx, colIdx, e.currentTarget as HTMLDivElement)}

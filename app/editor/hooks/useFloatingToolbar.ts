@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { FontEntry } from '../fonts';
+import { FontEntry, DEFAULT_FONT_SIZE } from '../fonts';
 import { BlockData, TextAlign } from '../types';
 import { isMac } from '../constants';
 
@@ -21,6 +21,7 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
   const [currentBgColor, setCurrentBgColor] = useState<string>('');
   const [currentFont, setCurrentFont] = useState<string>('');
   const [currentWeight, setCurrentWeight] = useState<number>(400);
+  const [currentFontSize, setCurrentFontSize] = useState<number>(DEFAULT_FONT_SIZE);
   const [currentAlign, setCurrentAlign] = useState<TextAlign>('left');
   const [currentLink, setCurrentLink] = useState<HTMLAnchorElement | null>(null);
 
@@ -28,6 +29,7 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
   const [colorOpen, setColorOpen] = useState(false);
   const [fontOpen, setFontOpen] = useState(false);
   const [weightOpen, setWeightOpen] = useState(false);
+  const [sizeOpen, setSizeOpen] = useState(false);
   const [alignOpen, setAlignOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [refOpen, setRefOpen] = useState(false);
@@ -38,6 +40,7 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
   const colorMenuRef = useRef<HTMLDivElement>(null);
   const fontMenuRef = useRef<HTMLDivElement>(null);
   const weightMenuRef = useRef<HTMLDivElement>(null);
+  const sizeMenuRef = useRef<HTMLDivElement>(null);
   const alignMenuRef = useRef<HTMLDivElement>(null);
   const linkMenuRef = useRef<HTMLDivElement>(null);
   const refMenuRef = useRef<HTMLDivElement>(null);
@@ -46,13 +49,14 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
   const [colorMenuPos, setColorMenuPos] = useState<{ left: number; top: number } | null>(null);
   const [fontMenuPos, setFontMenuPos] = useState<{ left: number; top: number } | null>(null);
   const [weightMenuPos, setWeightMenuPos] = useState<{ left: number; top: number } | null>(null);
+  const [sizeMenuPos, setSizeMenuPos] = useState<{ left: number; top: number } | null>(null);
   const [alignMenuPos, setAlignMenuPos] = useState<{ left: number; top: number } | null>(null);
   const [linkMenuPos, setLinkMenuPos] = useState<{ left: number; top: number } | null>(null);
   const [refMenuPos, setRefMenuPos] = useState<{ left: number; top: number } | null>(null);
 
   const savedRange = useRef<Range | null>(null);
   const inputSubmenuOpenRef = useRef(false);
-  inputSubmenuOpenRef.current = linkOpen || refOpen;
+  inputSubmenuOpenRef.current = linkOpen || refOpen || sizeOpen;
 
   // --- Helpers ---
 
@@ -76,7 +80,7 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
       ? node as HTMLElement
       : node.parentElement;
     while (el && !el.hasAttribute('contenteditable')) {
-      if (el.tagName === 'SPAN' && (el.style.fontFamily || el.style.fontWeight)) {
+      if (el.tagName === 'SPAN' && (el.style.fontFamily || el.style.fontWeight || el.style.fontSize)) {
         return el as HTMLSpanElement;
       }
       el = el.parentElement;
@@ -145,6 +149,8 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
         const computed = window.getComputedStyle(el);
         const family = computed.fontFamily;
         const weight = parseInt(computed.fontWeight, 10) || 400;
+        const fontSize = Math.round(parseFloat(computed.fontSize)) || DEFAULT_FONT_SIZE;
+        setCurrentFontSize(fontSize);
         const sortedFonts = [...allFonts].sort((a, b) => (b.isCustom ? 1 : 0) - (a.isCustom ? 1 : 0));
         const matched = sortedFonts.find(f =>
           family.toLowerCase().includes(f.family.split(',')[0].trim().replace(/['"]/g, '').toLowerCase())
@@ -272,11 +278,12 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
       if (colorMenuRef.current?.contains(target)) return;
       if (fontMenuRef.current?.contains(target)) return;
       if (weightMenuRef.current?.contains(target)) return;
+      if (sizeMenuRef.current?.contains(target)) return;
       if (alignMenuRef.current?.contains(target)) return;
       if (linkMenuRef.current?.contains(target)) return;
       if (refMenuRef.current?.contains(target)) return;
       setLinkOpen(false); setRefOpen(false); setColorOpen(false);
-      setFontOpen(false); setWeightOpen(false); setAlignOpen(false);
+      setFontOpen(false); setWeightOpen(false); setSizeOpen(false); setAlignOpen(false);
     };
 
     window.addEventListener('scroll', onScroll, true);
@@ -290,7 +297,7 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
   // Close submenus when toolbar hides
   useEffect(() => {
     if (!visible) {
-      setColorOpen(false); setFontOpen(false); setWeightOpen(false);
+      setColorOpen(false); setFontOpen(false); setWeightOpen(false); setSizeOpen(false);
       setAlignOpen(false); setLinkOpen(false); setRefOpen(false);
     }
   }, [visible]);
@@ -327,6 +334,9 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     if (weightOpen) positionSubmenu(weightMenuRef, setWeightMenuPos);
     else setWeightMenuPos(null);
 
+    if (sizeOpen) positionSubmenu(sizeMenuRef, setSizeMenuPos);
+    else setSizeMenuPos(null);
+
     if (alignOpen) positionSubmenu(alignMenuRef, setAlignMenuPos, true);
     else setAlignMenuPos(null);
 
@@ -339,7 +349,7 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
       positionSubmenu(refMenuRef, setRefMenuPos);
       setTimeout(() => refInputRef.current?.focus(), 0);
     } else setRefMenuPos(null);
-  }, [colorOpen, fontOpen, weightOpen, alignOpen, linkOpen, refOpen, position, positionSubmenu]);
+  }, [colorOpen, fontOpen, weightOpen, sizeOpen, alignOpen, linkOpen, refOpen, position, positionSubmenu]);
 
   // --- Format actions ---
 
@@ -357,9 +367,11 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     if (parentSpan) {
       if (parentSpan.style.fontFamily) span.style.fontFamily = parentSpan.style.fontFamily;
       if (parentSpan.style.fontWeight) span.style.fontWeight = parentSpan.style.fontWeight;
+      if (parentSpan.style.fontSize) span.style.fontSize = parentSpan.style.fontSize;
     }
     if (styles.fontFamily !== undefined) span.style.fontFamily = styles.fontFamily;
     if (styles.fontWeight !== undefined) span.style.fontWeight = styles.fontWeight;
+    if (styles.fontSize !== undefined) span.style.fontSize = styles.fontSize;
     try { range.surroundContents(span); } catch {
       const fragment = range.extractContents();
       span.appendChild(fragment);
@@ -567,6 +579,42 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     setWeightOpen(false);
   }, [restoreSelection, saveSelection, findStyledSpan, selectionCoversSpan, wrapRangeInSpan]);
 
+  const applyFontSize = useCallback((size: number) => {
+    // Focus the contenteditable before restoring selection (needed when
+    // the custom input has stolen focus away from the editable area).
+    if (savedRange.current) {
+      const node = savedRange.current.startContainer;
+      const el = node.nodeType === Node.ELEMENT_NODE ? node as HTMLElement : (node as Node).parentElement;
+      const editable = el?.closest('[contenteditable]') as HTMLElement | null;
+      if (editable) editable.focus();
+    }
+
+    restoreSelection();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) { setSizeOpen(false); return; }
+
+    const range = sel.getRangeAt(0);
+    const styledSpan = findStyledSpan(sel.anchorNode);
+    const coversAll = styledSpan && styledSpan.contains(sel.focusNode) && selectionCoversSpan(range, styledSpan);
+    const sizeVal = `${size}px`;
+
+    if (coversAll && styledSpan) {
+      styledSpan.style.fontSize = sizeVal;
+      sel.removeAllRanges();
+      const newRange = document.createRange();
+      newRange.selectNodeContents(styledSpan);
+      sel.addRange(newRange);
+    } else {
+      wrapRangeInSpan(range, sel, { fontSize: sizeVal }, styledSpan);
+    }
+
+    const editable = (sel.anchorNode?.parentElement ?? sel.anchorNode as HTMLElement)?.closest?.('[contenteditable]');
+    if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
+    saveSelection();
+    setCurrentFontSize(size);
+    setSizeOpen(false);
+  }, [restoreSelection, saveSelection, findStyledSpan, selectionCoversSpan, wrapRangeInSpan]);
+
   const applyAlignment = useCallback((align: TextAlign) => {
     restoreSelection();
     const blockId = getSelectedBlockId();
@@ -582,6 +630,7 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     if (keep !== 'color') setColorOpen(false);
     if (keep !== 'font') setFontOpen(false);
     if (keep !== 'weight') setWeightOpen(false);
+    if (keep !== 'size') setSizeOpen(false);
     if (keep !== 'align') setAlignOpen(false);
     if (keep !== 'link') setLinkOpen(false);
     if (keep !== 'ref') setRefOpen(false);
@@ -708,22 +757,22 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     visible, position, toolbarRef,
     // Active states
     activeFormats, currentTextColor, currentBgColor,
-    currentFont, currentWeight, currentAlign, currentLink,
+    currentFont, currentWeight, currentFontSize, currentAlign, currentLink,
     // Submenu open states
     colorOpen, setColorOpen, fontOpen, setFontOpen,
-    weightOpen, setWeightOpen, alignOpen, setAlignOpen,
+    weightOpen, setWeightOpen, sizeOpen, setSizeOpen, alignOpen, setAlignOpen,
     linkOpen, setLinkOpen, refOpen, setRefOpen,
     linkUrl, setLinkUrl, refSearch, setRefSearch,
     // Refs
-    colorMenuRef, fontMenuRef, weightMenuRef, alignMenuRef,
+    colorMenuRef, fontMenuRef, weightMenuRef, sizeMenuRef, alignMenuRef,
     linkMenuRef, refMenuRef, linkInputRef, refInputRef,
     // Menu positions
-    colorMenuPos, fontMenuPos, weightMenuPos, alignMenuPos,
+    colorMenuPos, fontMenuPos, weightMenuPos, sizeMenuPos, alignMenuPos,
     linkMenuPos, refMenuPos,
     // Actions
     applyFormat, applyTextColor, applyBgColor,
     applyLink, removeLink, applyRef,
-    applyFont, applyWeight, applyAlignment,
+    applyFont, applyWeight, applyFontSize, applyAlignment,
     closeSubmenusExcept, restoreSelection, getSelectedBlockId,
   };
 };

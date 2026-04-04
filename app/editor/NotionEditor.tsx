@@ -17,7 +17,7 @@ import { SectionNavPanel } from './components/SectionNavPanel';
 import type { SectionNavMeta } from './hooks/useSectionNav';
 import { getTemplate } from './components/designBlocks';
 import { FontLoader } from './components/FontLoader';
-import { SYSTEM_FONTS } from './fonts';
+import { SYSTEM_FONTS, DEFAULT_FONT_SIZE } from './fonts';
 import { EditorProvider, EditorDataSource, useLocalDataSource } from './EditorProvider';
 
 const DEFAULT_BLOCK: BlockData = { id: 'initial-block', type: 'text', content: '' };
@@ -47,6 +47,10 @@ const NotionEditorInner: React.FC<{
   const documentFont = (meta.documentFont as string) || SYSTEM_FONTS[0].family;
   const setDocumentFont = useCallback((font: string) => {
     setMeta({ documentFont: font });
+  }, [setMeta]);
+  const documentFontSize = (meta.documentFontSize as number) || DEFAULT_FONT_SIZE;
+  const setDocumentFontSize = useCallback((size: number) => {
+    setMeta({ documentFontSize: size });
   }, [setMeta]);
   // Section nav metadata (custom labels, hidden sections)
   const sectionNavMeta = (meta.sectionNav as SectionNavMeta) || {};
@@ -609,6 +613,8 @@ const NotionEditorInner: React.FC<{
         onToggleViewMode={() => setViewMode(prev => (prev === 'continuous' ? 'paginated' : 'continuous'))}
         documentFont={documentFont}
         onDocumentFontChange={setDocumentFont}
+        documentFontSize={documentFontSize}
+        onDocumentFontSizeChange={setDocumentFontSize}
         remoteUsers={remoteUsers}
         syncStatus={syncStatus}
         showSaved={showSaved}
@@ -641,6 +647,7 @@ const NotionEditorInner: React.FC<{
           }`}
           style={{
             fontFamily: documentFont || undefined,
+            fontSize: `${documentFontSize}px`,
             ...(viewMode === 'paginated' ? {
               width: pageConfig.width,
               transform: `scale(${zoom})`,

@@ -194,6 +194,7 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
         el.style.outline = 'none';
         el.style.minHeight = '1em';
         el.style.cursor = 'text';
+        el.style.fontSize = 'inherit';
       });
 
       // Inject swappable images

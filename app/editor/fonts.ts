@@ -50,6 +50,12 @@ export const WEIGHT_LABELS: Record<number, string> = {
   900: 'Black',
 };
 
+/** Font size presets (shared between floating toolbar and document toolbar) */
+export const SIZE_PRESETS = [12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72] as const;
+
+/** Default document font size in px */
+export const DEFAULT_FONT_SIZE = 16;
+
 // --- Fontes do sistema (sempre disponíveis) ---
 export const SYSTEM_FONTS: FontEntry[] = [
   { name: 'Padrão', family: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol"' },

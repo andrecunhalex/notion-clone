@@ -16,6 +16,7 @@ import { Tooltip } from './toolbar/Tooltip';
 import { ColorPicker } from './toolbar/ColorPicker';
 import { FontPicker } from './toolbar/FontPicker';
 import { WeightPicker } from './toolbar/WeightPicker';
+import { SizePicker } from './toolbar/SizePicker';
 import { AlignmentPicker } from './toolbar/AlignmentPicker';
 import { LinkInput } from './toolbar/LinkInput';
 import { RefPicker } from './toolbar/RefPicker';
@@ -93,6 +94,17 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
             </button>
           </Tooltip>
         )}
+
+        {/* Font size button */}
+        <Tooltip label="Tamanho" shortcut="">
+          <button
+            className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 ${toolbar.sizeOpen ? 'bg-gray-100' : ''}`}
+            onClick={() => { toolbar.setSizeOpen(!toolbar.sizeOpen); toolbar.closeSubmenusExcept('size'); }}
+          >
+            <span className="truncate tabular-nums">{toolbar.currentFontSize}px</span>
+            <ChevronDown size={10} />
+          </button>
+        </Tooltip>
 
         <div className="w-px h-5 bg-gray-200 mx-0.5" />
 
@@ -217,6 +229,15 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
           currentWeight={toolbar.currentWeight}
           currentFont={toolbar.currentFont}
           onSelect={toolbar.applyWeight}
+        />
+      )}
+
+      {toolbar.sizeOpen && (
+        <SizePicker
+          menuRef={toolbar.sizeMenuRef}
+          menuPos={toolbar.sizeMenuPos}
+          currentSize={toolbar.currentFontSize}
+          onSelect={toolbar.applyFontSize}
         />
       )}
 

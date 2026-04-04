@@ -62,9 +62,9 @@ const BLOCK_INLINE_STYLES: Record<string, React.CSSProperties> = {
   h1: { fontSize: '1.875em', lineHeight: 1.3 },
   h2: { fontSize: '1.5em', lineHeight: 1.3 },
   h3: { fontSize: '1.25em', lineHeight: 1.3 },
-  text: { fontSize: '16px', lineHeight: 1.5 },
-  bullet_list: { fontSize: '16px', lineHeight: 1.5 },
-  numbered_list: { fontSize: '16px', lineHeight: 1.5 },
+  text: { lineHeight: 1.5 },
+  bullet_list: { lineHeight: 1.5 },
+  numbered_list: { lineHeight: 1.5 },
 };
 
 const HANDLE_LINE: Record<string, string> = {
