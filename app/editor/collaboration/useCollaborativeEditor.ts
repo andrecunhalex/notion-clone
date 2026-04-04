@@ -110,9 +110,6 @@ export function useCollaborativeEditor({
       const cached = sync.getBlocks();
       if (cached.length > 0) {
         setBlocksState(cached);
-      } else {
-        sync.initIfEmpty(initialBlocks);
-        setBlocksState(sync.getBlocks());
       }
       // Load meta from IndexedDB
       metaObserver();
@@ -124,6 +121,11 @@ export function useCollaborativeEditor({
     provider.onStatusChange((status) => {
       setSyncStatus(status);
       if (status === 'synced') {
+        // Only initialize with empty block if doc is still empty after Supabase sync
+        const current = sync.getBlocks();
+        if (current.length === 0) {
+          sync.initIfEmpty(initialBlocks);
+        }
         setBlocksState(sync.getBlocks());
         metaObserver();
       }

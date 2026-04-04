@@ -66,14 +66,12 @@ function truncate(text: string, max: number): string {
   return text.slice(0, max).trimEnd() + '...';
 }
 
-/** Check if a block is a section-level heading (h1/h2/h3 or design block with autonumber) */
+/** Check if a block is a section-level heading (h1 or design block with heading autonumber) */
 function getSectionLevel(block: BlockData): SectionLevel | null {
   if (block.type === 'h1') return 'heading';
-  if (block.type === 'h2' || block.type === 'h3') return 'subheading';
   if (block.type === 'design_block' && block.designBlockData) {
     const tpl = getTemplate(block.designBlockData.templateId);
     if (tpl?.autonumber === 'heading') return 'heading';
-    if (tpl?.autonumber === 'subheading') return 'subheading';
   }
   return null;
 }
