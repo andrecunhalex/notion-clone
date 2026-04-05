@@ -52,34 +52,36 @@ export function useVersionHistory({
   const snapshotRef = useRef<BlockData[] | null>(null);
   const snapshotMetaRef = useRef<Record<string, unknown>>({});
   const versionSavedRef = useRef(false);
-  // Tracks the blocks reference captured right after sync completes
-  const syncedBlocksRef = useRef<BlockData[] | null>(null);
+  // Fingerprint to detect real structural changes (not just reference changes)
+  const syncedFingerprintRef = useRef<string | null>(null);
+
+  /** Cheap fingerprint: block count + first/last IDs + content hash of first block */
+  function fingerprint(blocks: BlockData[]): string {
+    if (blocks.length === 0) return '0';
+    return `${blocks.length}:${blocks[0].id}:${blocks[blocks.length - 1].id}:${blocks[0].content.length}`;
+  }
 
   // Capture snapshot once sync is complete
-  // This ensures we don't confuse Supabase/IndexedDB data loading with user edits
   useEffect(() => {
     if (!available || syncStatus !== 'synced') return;
-    // Only capture once per session
-    if (snapshotRef.current) return;
+    if (snapshotRef.current) return; // Only once per session
 
     snapshotRef.current = structuredClone(currentBlocks);
     snapshotMetaRef.current = structuredClone(currentMeta);
-    syncedBlocksRef.current = currentBlocks; // store reference for edit detection
+    syncedFingerprintRef.current = fingerprint(currentBlocks);
   }, [available, syncStatus, currentBlocks, currentMeta]);
 
   // Detect first edit after sync and save pre-edit snapshot to Supabase
   useEffect(() => {
     if (!available || !collabConfig || versionSavedRef.current) return;
-    // Wait until snapshot was captured (sync completed)
-    if (!snapshotRef.current || !syncedBlocksRef.current) return;
-    // Same reference = no edit happened yet (just sync updates)
-    if (currentBlocks === syncedBlocksRef.current) return;
+    if (!snapshotRef.current || !syncedFingerprintRef.current) return;
+    // Compare fingerprint — only save if structure actually changed
+    if (fingerprint(currentBlocks) === syncedFingerprintRef.current) return;
 
     versionSavedRef.current = true;
     const snapshot = snapshotRef.current;
     const meta = snapshotMetaRef.current;
 
-    // Save pre-edit state as version (fire and forget)
     const supabase = getSupabaseClient(collabConfig.supabaseUrl, collabConfig.supabaseAnonKey);
     supabase
       .from('document_versions')

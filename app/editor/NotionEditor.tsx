@@ -105,8 +105,11 @@ const NotionEditorInner: React.FC<{
   const overlayOpenRef = useRef(false);
   overlayOpenRef.current = versionHistory.isOpen;
 
+  const restoreInProgressRef = useRef(false);
+
   const setBlocks = useCallback((newBlocks: BlockData[]) => {
-    if (readOnly || overlayOpenRef.current) return; // Block mutations in readOnly or when overlay is open
+    if (readOnly) return;
+    if (overlayOpenRef.current && !restoreInProgressRef.current) return; // Block mutations when overlay is open (except restore)
     dataSource.trackSelectedIds?.(Array.from(selectedIdsRef.current));
     setBlocksRaw(newBlocks);
     onChange?.(newBlocks);
@@ -124,13 +127,12 @@ const NotionEditorInner: React.FC<{
     setSelectedIds(new Set(restoredIds));
   }, [redoRaw, setSelectedIds, readOnly]);
 
-  // Restore handler for version history — bypasses readOnly check intentionally
+  // Restore handler for version history — uses restoreInProgressRef to bypass the overlay guard
   const handleVersionRestore = useCallback((restoredBlocks: BlockData[]) => {
-    overlayOpenRef.current = false; // Allow this specific mutation
-    dataSource.trackSelectedIds?.([]);
-    setBlocksRaw(restoredBlocks);
-    onChange?.(restoredBlocks);
-  }, [setBlocksRaw, onChange, dataSource]);
+    restoreInProgressRef.current = true;
+    setBlocks(restoredBlocks);
+    restoreInProgressRef.current = false;
+  }, [setBlocks]);
 
   const { blockHeights, handleHeightChange, ready: paginationReady } = usePagination({ blocks, setBlocks, viewMode, pageContentHeight });
 

@@ -135,7 +135,7 @@ function sideBySideDiff(oldText: string, newText: string): { left: string; right
   if (oldText === newText) return { left: escapeHtml(oldText), right: escapeHtml(newText) };
   const oldT = tokenize(oldText), newT = tokenize(newText);
   const m = oldT.length, n = newT.length;
-  if (m > 5000 || n > 5000) return { left: escapeHtml(oldText), right: escapeHtml(newText) };
+  if (m > 2000 || n > 2000) return { left: escapeHtml(oldText), right: escapeHtml(newText) };
 
   const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
   for (let i = m - 1; i >= 0; i--)
@@ -263,8 +263,13 @@ export const VersionHistoryOverlay: React.FC<VersionHistoryOverlayProps> = ({
   const leftHighlights = useMemo(() => new Set([...diffs.modified, ...diffs.deleted]), [diffs]);
   const rightHighlights = useMemo(() => new Set([...diffs.modified, ...diffs.added]), [diffs]);
 
+  // Memoize versionBlocks to avoid re-creating on every render
+  const versionBlocks = useMemo(
+    () => selectedVersion?.blocks || currentBlocks,
+    [selectedVersion, currentBlocks],
+  );
+
   // Annotate blocks with inline word diff, then prefix IDs to avoid DOM collisions
-  const versionBlocks = selectedVersion?.blocks || currentBlocks;
   const leftBlocks = useMemo(
     () => prefixBlockIds(
       selectedVersion ? annotateForSide(versionBlocks, currentBlocks, diffs.modified, 'left') : currentBlocks,
