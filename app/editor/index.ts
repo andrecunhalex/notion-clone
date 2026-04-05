@@ -28,6 +28,8 @@ export type {
   EditorDataSourceInterface,
   EditorConfig,
   PageConfig,
+  DocumentVersion,
+  VersionHistoryCollabConfig,
 } from './types';
 
 // Utils úteis para extensão

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { RotateCcw, RotateCw, FileText, Scroll, ChevronDown, X, ZoomIn, ZoomOut, MoveHorizontal, MoreHorizontal, List } from 'lucide-react';
+import { RotateCcw, RotateCw, FileText, Scroll, ChevronDown, X, ZoomIn, ZoomOut, MoveHorizontal, MoreHorizontal, List, Clock } from 'lucide-react';
 import { ViewMode } from '../types';
 import { SIZE_PRESETS, DEFAULT_FONT_SIZE } from '../fonts';
 import { useFonts } from './FontLoader';
@@ -47,6 +47,8 @@ interface ToolbarProps {
   hasSections?: boolean;
   /** Toggle section panel open/close */
   onToggleSectionPanel?: () => void;
+  /** Open version history overlay */
+  onOpenVersionHistory?: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -73,6 +75,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onToggleFullWidth,
   hasSections,
   onToggleSectionPanel,
+  onOpenVersionHistory,
 }) => {
   const { allFonts, customFonts } = useFonts();
   const [fontOpen, setFontOpen] = useState(false);
@@ -263,6 +266,19 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <RotateCw size={16} />
         </button>
 
+        {onOpenVersionHistory && (
+          <>
+            <div className="w-px h-4 bg-gray-200 mx-1" />
+            <button
+              onClick={onOpenVersionHistory}
+              className="p-1 hover:bg-gray-100 rounded text-gray-500"
+              title="Histórico de versões"
+            >
+              <Clock size={16} />
+            </button>
+          </>
+        )}
+
         {onToggleFullWidth && (
           <>
             <div className="w-px h-4 bg-gray-200 mx-1" />
@@ -379,6 +395,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 >
                   <List size={16} />
                   Seções do documento
+                </button>
+              )}
+
+              {/* Version history */}
+              {onOpenVersionHistory && (
+                <button
+                  onClick={() => { onOpenVersionHistory(); setMobileMenuOpen(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <Clock size={16} />
+                  Histórico de versões
                 </button>
               )}
 

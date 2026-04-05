@@ -167,6 +167,32 @@ export interface EditorConfig {
   defaultZoom?: number;
   /** Section navigation buttons on pages (table-of-contents nav) */
   sectionNav?: SectionNavConfig;
+  /** Enable version history feature (requires collaborationConfig). Can be toggled as premium feature. */
+  enableVersionHistory?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Version History
+// ---------------------------------------------------------------------------
+
+/** Collaboration config needed for version history (Supabase access + user info) */
+export interface VersionHistoryCollabConfig {
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+  documentId: string;
+  user: { id: string; name: string; color: string };
+}
+
+/** A snapshot of the document at a point in time */
+export interface DocumentVersion {
+  id: string;
+  document_id: string;
+  blocks: BlockData[];
+  meta: Record<string, unknown>;
+  user_id: string;
+  user_name: string;
+  user_color: string;
+  created_at: string;
 }
 
 // Props do Editor principal (para reutilização)
@@ -187,4 +213,6 @@ export interface NotionEditorProps {
   syncStatus?: 'disconnected' | 'connecting' | 'connected' | 'synced';
   /** Manual save callback (e.g. for Ctrl+S) */
   onSaveNow?: () => Promise<void>;
+  /** Collaboration config for features that need Supabase access (e.g. version history) */
+  collaborationConfig?: VersionHistoryCollabConfig;
 }

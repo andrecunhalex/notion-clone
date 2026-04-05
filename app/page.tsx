@@ -71,8 +71,15 @@ function CollaborativeEditor() {
         remoteUsers={remoteUsers}
         syncStatus={syncStatus}
         onSaveNow={saveNow}
-        config={{ 
+        collaborationConfig={{
+          supabaseUrl: SUPABASE_URL!,
+          supabaseAnonKey: SUPABASE_ANON_KEY!,
+          documentId: DOC_ID,
+          user: { id: sessionUserId, name: `User ${sessionUserId.slice(0, 4)}`, color: randomColor },
+        }}
+        config={{
           uploadImage: handleUploadImage,
+          enableVersionHistory: true,
           sectionNav: {
             position: 'header',
             pages: 'all',

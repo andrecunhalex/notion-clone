@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig } from './types';
+import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig, VersionHistoryCollabConfig } from './types';
 import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty, resolvePageConfig, getContentHeight } from './utils';
 import {
   useBlockManager,
@@ -14,11 +14,13 @@ import {
 } from './hooks';
 import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar, SectionNav, SectionTocPage } from './components';
 import { SectionNavPanel } from './components/SectionNavPanel';
+import { VersionHistoryOverlay } from './components/VersionHistory';
 import type { SectionNavMeta } from './hooks/useSectionNav';
 import { getTemplate } from './components/designBlocks';
 import { FontLoader } from './components/FontLoader';
 import { SYSTEM_FONTS, DEFAULT_FONT_SIZE } from './fonts';
 import { EditorProvider, EditorDataSource, useLocalDataSource } from './EditorProvider';
+import { useVersionHistory } from './hooks/useVersionHistory';
 
 const DEFAULT_BLOCK: BlockData = { id: 'initial-block', type: 'text', content: '' };
 
@@ -32,7 +34,8 @@ const NotionEditorInner: React.FC<{
   remoteUsers?: { id: string; name: string; color: string; cursor?: { blockId: string } | null }[];
   syncStatus?: 'disconnected' | 'connecting' | 'connected' | 'synced';
   onSaveNow?: () => Promise<void>;
-}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus, onSaveNow }) => {
+  collaborationConfig?: VersionHistoryCollabConfig;
+}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus, onSaveNow, collaborationConfig }) => {
   const { blocks, setBlocks: setBlocksRaw, undo: undoRaw, redo: redoRaw, canUndo, canRedo, meta, setMeta } = dataSource;
 
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
@@ -74,6 +77,15 @@ const NotionEditorInner: React.FC<{
     maxLabelLength: navConfig.maxLabelLength,
   });
 
+  // Version history
+  const versionHistory = useVersionHistory({
+    enabled: !!config.enableVersionHistory,
+    collabConfig: collaborationConfig,
+    currentBlocks: blocks,
+    currentMeta: meta,
+    syncStatus,
+  });
+
   // Section panel: desktop starts open, mobile starts closed
   const [sectionPanelOpen, setSectionPanelOpen] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 768 : true
@@ -103,6 +115,11 @@ const NotionEditorInner: React.FC<{
     const restoredIds = redoRaw();
     setSelectedIds(new Set(restoredIds));
   }, [redoRaw, setSelectedIds]);
+
+  // Restore handler for version history
+  const handleVersionRestore = useCallback((restoredBlocks: BlockData[]) => {
+    setBlocks(restoredBlocks);
+  }, [setBlocks]);
 
   const { blockHeights, handleHeightChange, ready: paginationReady } = usePagination({ blocks, setBlocks, viewMode, pageContentHeight });
 
@@ -627,6 +644,7 @@ const NotionEditorInner: React.FC<{
         onToggleFullWidth={toggleFullWidth}
         hasSections={hasSections}
         onToggleSectionPanel={() => setSectionPanelOpen(prev => !prev)}
+        onOpenVersionHistory={versionHistory.available ? versionHistory.open : undefined}
       />
 
       {/* Scroll container — takes all remaining space below toolbar (flex-1).
@@ -810,6 +828,17 @@ const NotionEditorInner: React.FC<{
       )}
 
       {!slashMenu.isOpen && <FloatingToolbar documentFont={documentFont} blocks={blocks} updateBlock={updateBlock} />}
+
+      {versionHistory.isOpen && (
+        <VersionHistoryOverlay
+          versionHistory={versionHistory}
+          currentBlocks={blocks}
+          pageConfigProp={config.page}
+          documentFont={documentFont}
+          documentFontSize={documentFontSize}
+          onRestore={handleVersionRestore}
+        />
+      )}
     </div>
   );
 };
@@ -826,6 +855,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   remoteUsers,
   syncStatus,
   onSaveNow,
+  collaborationConfig,
 }) => {
   const localDataSource = useLocalDataSource(initialBlocks, config.historyDebounceMs);
   const noopSetMeta = useCallback(() => {}, []);
@@ -852,6 +882,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           remoteUsers={remoteUsers}
           syncStatus={syncStatus}
           onSaveNow={onSaveNow}
+          collaborationConfig={collaborationConfig}
         />
       </EditorProvider>
     </FontLoader>
