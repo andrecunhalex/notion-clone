@@ -215,4 +215,8 @@ export interface NotionEditorProps {
   onSaveNow?: () => Promise<void>;
   /** Collaboration config for features that need Supabase access (e.g. version history) */
   collaborationConfig?: VersionHistoryCollabConfig;
+  /** Read-only mode: disables editing, drag, slash menu, toolbar. Used by version history. */
+  readOnly?: boolean;
+  /** Initial document metadata (font, fontSize, etc.) — used when no dataSource is provided */
+  initialMeta?: Record<string, unknown>;
 }

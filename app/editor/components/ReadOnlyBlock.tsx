@@ -42,22 +42,18 @@ function buildDesignBlockHtml(
   const div = document.createElement('div');
   div.innerHTML = tpl.html;
 
-  // Inject editable values
   div.querySelectorAll('[data-editable]').forEach(el => {
     const key = el.getAttribute('data-editable')!;
-    const val = values[key] ?? tpl.defaults[key] ?? '';
-    el.innerHTML = val;
+    el.innerHTML = values[key] ?? tpl.defaults[key] ?? '';
     el.removeAttribute('contenteditable');
   });
 
-  // Inject swappable images
   div.querySelectorAll('[data-swappable]').forEach(el => {
     const key = el.getAttribute('data-swappable')!;
     const src = values[key] || tpl.defaults[key] || '';
     if (src) (el as HTMLImageElement).src = src;
   });
 
-  // Inject autonumber
   if (autoNumber) {
     div.querySelectorAll('[data-autonumber]').forEach(el => {
       el.textContent = autoNumber;
@@ -71,12 +67,9 @@ function buildDesignBlockHtml(
 // Props
 // ---------------------------------------------------------------------------
 
-export type DiffType = 'modified' | 'deleted' | 'added' | undefined;
-
 interface ReadOnlyBlockProps {
   block: BlockData;
   listNumber: number;
-  diffType?: DiffType;
   autoNumber?: string;
 }
 
@@ -84,7 +77,7 @@ interface ReadOnlyBlockProps {
 // Component
 // ---------------------------------------------------------------------------
 
-const ReadOnlyBlockInner: React.FC<ReadOnlyBlockProps> = ({ block, listNumber, diffType, autoNumber }) => {
+const ReadOnlyBlockInner: React.FC<ReadOnlyBlockProps> = ({ block, listNumber, autoNumber }) => {
   const isList = isListType(block.type);
   const indent = block.indent ?? 0;
   const contentStyle = BLOCK_INLINE_STYLES[block.type];
@@ -92,21 +85,10 @@ const ReadOnlyBlockInner: React.FC<ReadOnlyBlockProps> = ({ block, listNumber, d
     ? { ...contentStyle, textAlign: block.align as React.CSSProperties['textAlign'] }
     : contentStyle;
 
-  const highlightStyle = diffType === 'deleted'
-    ? 'bg-red-50 border-l-4 border-red-300 pl-2'
-    : diffType === 'added'
-    ? 'bg-green-50 border-l-4 border-green-400 pl-2'
-    : '';
-
-  // Deleted blocks get strikethrough + muted text
-  const deletedTextStyle: React.CSSProperties | undefined = diffType === 'deleted'
-    ? { textDecoration: 'line-through', opacity: 0.6 }
-    : undefined;
-
   // Divider
   if (block.type === 'divider') {
     return (
-      <div className={`py-2 ${highlightStyle}`} style={deletedTextStyle}>
+      <div className="py-2">
         <hr className="border-t border-gray-300" />
       </div>
     );
@@ -117,7 +99,7 @@ const ReadOnlyBlockInner: React.FC<ReadOnlyBlockProps> = ({ block, listNumber, d
     const { src, width, alignment, caption } = block.imageData;
     const justify = alignment === 'center' ? 'center' : alignment === 'right' ? 'flex-end' : 'flex-start';
     return (
-      <div className={`py-1 ${highlightStyle}`} style={{ display: 'flex', justifyContent: justify, ...deletedTextStyle }}>
+      <div className="py-1" style={{ display: 'flex', justifyContent: justify }}>
         <div style={{ width: `${width}%` }}>
           {src && <img src={src} alt={caption || ''} className="w-full rounded" />}
           {caption && <p className="text-xs text-gray-400 text-center mt-1">{caption}</p>}
@@ -130,7 +112,7 @@ const ReadOnlyBlockInner: React.FC<ReadOnlyBlockProps> = ({ block, listNumber, d
   if (block.type === 'table' && block.tableData) {
     const { rows, columnWidths, hasHeaderRow } = block.tableData;
     return (
-      <div className={`my-1 overflow-x-auto ${highlightStyle}`} style={deletedTextStyle}>
+      <div className="my-1 overflow-x-auto">
         <table className="w-full border-collapse border border-gray-200" style={{ tableLayout: 'fixed' }}>
           <colgroup>
             {columnWidths.map((w, i) => (
@@ -166,14 +148,10 @@ const ReadOnlyBlockInner: React.FC<ReadOnlyBlockProps> = ({ block, listNumber, d
     );
   }
 
-  // Design block — build HTML from template + values
+  // Design block
   if (block.type === 'design_block' && block.designBlockData) {
     return (
-      <DesignBlockReadOnly
-        block={block}
-        autoNumber={autoNumber}
-        highlightStyle={highlightStyle}
-      />
+      <DesignBlockReadOnly block={block} autoNumber={autoNumber} />
     );
   }
 
@@ -197,23 +175,24 @@ const ReadOnlyBlockInner: React.FC<ReadOnlyBlockProps> = ({ block, listNumber, d
   ) : null;
 
   return (
-    <div className={`flex items-start py-0.5 px-1 ${highlightStyle}`}>
+    <div className="flex items-start py-px my-px">
       {listMarker}
-      <div
-        className={`flex-1 min-w-0 ${BLOCK_STYLES[block.type] || ''}`}
-        style={{ ...alignStyle, ...deletedTextStyle }}
-        dangerouslySetInnerHTML={{ __html: block.content }}
-      />
+      <div className="flex-1 min-w-0 py-0.5 px-1">
+        <div
+          className={`${BLOCK_STYLES[block.type] || ''} min-h-[1.5em]`}
+          style={alignStyle}
+          dangerouslySetInnerHTML={{ __html: block.content }}
+        />
+      </div>
     </div>
   );
 };
 
-// Separate component for design blocks to safely use DOM APIs only on client
+// Design block read-only renderer
 const DesignBlockReadOnly: React.FC<{
   block: BlockData;
   autoNumber?: string;
-  highlightStyle: string;
-}> = ({ block, autoNumber, highlightStyle }) => {
+}> = ({ block, autoNumber }) => {
   const html = useMemo(() => {
     if (typeof document === 'undefined') return '';
     return buildDesignBlockHtml(
@@ -224,10 +203,7 @@ const DesignBlockReadOnly: React.FC<{
   }, [block.designBlockData, autoNumber]);
 
   return (
-    <div
-      className={`my-1 ${highlightStyle}`}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <div className="my-1" dangerouslySetInnerHTML={{ __html: html }} />
   );
 };
 

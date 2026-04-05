@@ -42,8 +42,9 @@ interface LocalState {
 export function useLocalDataSource(
   initialBlocks: BlockData[],
   debounceMs?: number,
+  initialMeta?: DocumentMeta,
 ): EditorDataSource {
-  const initialState: LocalState = { blocks: initialBlocks, meta: {} };
+  const initialState: LocalState = { blocks: initialBlocks, meta: initialMeta || {} };
   const [state, setStateRaw, undoRaw, redoRaw, canUndo, canRedo] = useHistory<LocalState>(initialState, debounceMs);
 
   const selectedIdsRef = useRef<string[]>([]);

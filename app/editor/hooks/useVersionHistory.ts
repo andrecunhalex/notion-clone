@@ -18,63 +18,15 @@ interface UseVersionHistoryOptions {
 }
 
 export interface UseVersionHistoryReturn {
-  /** Whether the feature is available (enabled + has config) */
   available: boolean;
-  /** Overlay state */
   isOpen: boolean;
   open: () => void;
   close: () => void;
-  /** Version data */
   versions: DocumentVersion[];
   loading: boolean;
   selectedVersion: DocumentVersion | null;
   selectVersion: (v: DocumentVersion | null) => void;
-  /** Diff toggle */
-  highlightChanges: boolean;
-  toggleHighlightChanges: () => void;
-  /** Returns the blocks to restore (caller does setBlocks) */
   restore: () => BlockData[] | null;
-  /** Map of block ID → diff type ('modified' | 'deleted') */
-  blockDiffs: Map<string, BlockDiffType>;
-}
-
-// ---------------------------------------------------------------------------
-// Diff computation
-// ---------------------------------------------------------------------------
-
-export type BlockDiffType = 'modified' | 'deleted' | 'added';
-
-function computeBlockDiffs(
-  versionBlocks: BlockData[],
-  currentBlocks: BlockData[],
-): Map<string, BlockDiffType> {
-  const diffs = new Map<string, BlockDiffType>();
-  const currentMap = new Map(currentBlocks.map(b => [b.id, b]));
-  const versionIds = new Set(versionBlocks.map(b => b.id));
-
-  for (const vBlock of versionBlocks) {
-    const cur = currentMap.get(vBlock.id);
-    if (!cur) {
-      diffs.set(vBlock.id, 'deleted');
-    } else if (
-      cur.content !== vBlock.content ||
-      cur.type !== vBlock.type ||
-      JSON.stringify(cur.tableData) !== JSON.stringify(vBlock.tableData) ||
-      JSON.stringify(cur.imageData) !== JSON.stringify(vBlock.imageData) ||
-      JSON.stringify(cur.designBlockData) !== JSON.stringify(vBlock.designBlockData)
-    ) {
-      diffs.set(vBlock.id, 'modified');
-    }
-  }
-
-  // Detect blocks added in current version (not in old version)
-  for (const cBlock of currentBlocks) {
-    if (!versionIds.has(cBlock.id)) {
-      diffs.set(cBlock.id, 'added');
-    }
-  }
-
-  return diffs;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +47,6 @@ export function useVersionHistory({
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<DocumentVersion | null>(null);
-  const [highlightChanges, setHighlightChanges] = useState(true);
 
   // --- Session snapshot (saved on first edit) ---
   const snapshotRef = useRef<BlockData[] | null>(null);
@@ -202,12 +153,6 @@ export function useVersionHistory({
     return selectedVersion.blocks;
   }, [selectedVersion]);
 
-  // --- Diff ---
-  const blockDiffs = useMemo(() => {
-    if (!selectedVersion || !highlightChanges) return new Map<string, BlockDiffType>();
-    return computeBlockDiffs(selectedVersion.blocks, currentBlocks);
-  }, [selectedVersion, highlightChanges, currentBlocks]);
-
   // --- No-op return when unavailable ---
   const noop = useCallback(() => {}, []);
   const noopRestore = useCallback(() => null, []);
@@ -222,10 +167,7 @@ export function useVersionHistory({
       loading: false,
       selectedVersion: null,
       selectVersion: noop,
-      highlightChanges: false,
-      toggleHighlightChanges: noop,
       restore: noopRestore,
-      blockDiffs: new Map(),
     };
   }
 
@@ -238,9 +180,6 @@ export function useVersionHistory({
     loading,
     selectedVersion,
     selectVersion: setSelectedVersion,
-    highlightChanges,
-    toggleHighlightChanges: () => setHighlightChanges(prev => !prev),
     restore,
-    blockDiffs,
   };
 }

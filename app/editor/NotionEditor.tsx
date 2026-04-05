@@ -35,7 +35,8 @@ const NotionEditorInner: React.FC<{
   syncStatus?: 'disconnected' | 'connecting' | 'connected' | 'synced';
   onSaveNow?: () => Promise<void>;
   collaborationConfig?: VersionHistoryCollabConfig;
-}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus, onSaveNow, collaborationConfig }) => {
+  readOnly?: boolean;
+}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus, onSaveNow, collaborationConfig, readOnly }) => {
   const { blocks, setBlocks: setBlocksRaw, undo: undoRaw, redo: redoRaw, canUndo, canRedo, meta, setMeta } = dataSource;
 
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
@@ -100,26 +101,36 @@ const NotionEditorInner: React.FC<{
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
 
+  // Track overlay state via ref so setBlocks can check it without re-creating
+  const overlayOpenRef = useRef(false);
+  overlayOpenRef.current = versionHistory.isOpen;
+
   const setBlocks = useCallback((newBlocks: BlockData[]) => {
+    if (readOnly || overlayOpenRef.current) return; // Block mutations in readOnly or when overlay is open
     dataSource.trackSelectedIds?.(Array.from(selectedIdsRef.current));
     setBlocksRaw(newBlocks);
     onChange?.(newBlocks);
-  }, [setBlocksRaw, onChange, dataSource]);
+  }, [setBlocksRaw, onChange, dataSource, readOnly]);
 
   const undo = useCallback(() => {
+    if (readOnly || overlayOpenRef.current) return;
     const restoredIds = undoRaw();
     setSelectedIds(new Set(restoredIds));
-  }, [undoRaw, setSelectedIds]);
+  }, [undoRaw, setSelectedIds, readOnly]);
 
   const redo = useCallback(() => {
+    if (readOnly || overlayOpenRef.current) return;
     const restoredIds = redoRaw();
     setSelectedIds(new Set(restoredIds));
-  }, [redoRaw, setSelectedIds]);
+  }, [redoRaw, setSelectedIds, readOnly]);
 
-  // Restore handler for version history
+  // Restore handler for version history — bypasses readOnly check intentionally
   const handleVersionRestore = useCallback((restoredBlocks: BlockData[]) => {
-    setBlocks(restoredBlocks);
-  }, [setBlocks]);
+    overlayOpenRef.current = false; // Allow this specific mutation
+    dataSource.trackSelectedIds?.([]);
+    setBlocksRaw(restoredBlocks);
+    onChange?.(restoredBlocks);
+  }, [setBlocksRaw, onChange, dataSource]);
 
   const { blockHeights, handleHeightChange, ready: paginationReady } = usePagination({ blocks, setBlocks, viewMode, pageContentHeight });
 
@@ -614,13 +625,13 @@ const NotionEditorInner: React.FC<{
 
   return (
     <div
-      className={`h-screen flex flex-col text-gray-800 selection:bg-blue-200 ${
+      className={`${readOnly ? 'h-full' : 'h-screen'} flex flex-col text-gray-800 selection:bg-blue-200 ${
         selectionBox ? 'select-none' : ''
       } ${viewMode === 'paginated' ? 'bg-gray-100' : 'bg-white'}`}
       onMouseDown={handleMouseDown}
       onDragEnd={clearDropTarget}
     >
-      <Toolbar
+      {!readOnly && <Toolbar
         title={title}
         canUndo={canUndo}
         canRedo={canRedo}
@@ -645,7 +656,7 @@ const NotionEditorInner: React.FC<{
         hasSections={hasSections}
         onToggleSectionPanel={() => setSectionPanelOpen(prev => !prev)}
         onOpenVersionHistory={versionHistory.available ? versionHistory.open : undefined}
-      />
+      />}
 
       {/* Scroll container — takes all remaining space below toolbar (flex-1).
           Starts opacity:0 in paginated mode until block heights are collected,
@@ -658,7 +669,7 @@ const NotionEditorInner: React.FC<{
       >
         <div
           ref={containerRef}
-          className={`relative cursor-text ${
+          className={`relative ${readOnly ? 'pointer-events-none select-none cursor-default' : 'cursor-text'} ${
             viewMode === 'paginated'
               ? 'mx-auto'
               : 'max-w-3xl mx-auto mt-12 px-12 pb-64 min-h-[80vh] overflow-x-hidden'
@@ -761,6 +772,7 @@ const NotionEditorInner: React.FC<{
                     edgePadding={edgePadding}
                     isFirstOnPage={index === 0 && !headerNavBlocks}
                     isLastOnPage={index === pageBlocks.length - 1 && !footerNavBlocks}
+                    readOnly={readOnly}
                   />
                 ))}
               </div>
@@ -805,7 +817,7 @@ const NotionEditorInner: React.FC<{
         </div>
       </div>
 
-      {hasSections && (
+      {!readOnly && hasSections && (
         <SectionNavPanel
           sections={sections}
           isOpen={sectionPanelOpen}
@@ -816,9 +828,9 @@ const NotionEditorInner: React.FC<{
         />
       )}
 
-      <SelectionOverlay selectionBox={selectionBox} containerRef={containerRef} />
+      {!readOnly && <SelectionOverlay selectionBox={selectionBox} containerRef={containerRef} />}
 
-      {slashMenu.isOpen && (
+      {!readOnly && slashMenu.isOpen && (
         <SlashMenu
           x={slashMenu.x}
           y={slashMenu.y}
@@ -827,16 +839,16 @@ const NotionEditorInner: React.FC<{
         />
       )}
 
-      {!slashMenu.isOpen && <FloatingToolbar documentFont={documentFont} blocks={blocks} updateBlock={updateBlock} />}
+      {!readOnly && !slashMenu.isOpen && <FloatingToolbar documentFont={documentFont} blocks={blocks} updateBlock={updateBlock} />}
 
       {versionHistory.isOpen && (
         <VersionHistoryOverlay
           versionHistory={versionHistory}
           currentBlocks={blocks}
-          pageConfigProp={config.page}
           documentFont={documentFont}
           documentFontSize={documentFontSize}
           onRestore={handleVersionRestore}
+          editorConfig={config}
         />
       )}
     </div>
@@ -856,8 +868,10 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   syncStatus,
   onSaveNow,
   collaborationConfig,
+  readOnly,
+  initialMeta,
 }) => {
-  const localDataSource = useLocalDataSource(initialBlocks, config.historyDebounceMs);
+  const localDataSource = useLocalDataSource(initialBlocks, config.historyDebounceMs, initialMeta as import('./EditorProvider').DocumentMeta | undefined);
   const noopSetMeta = useCallback(() => {}, []);
   const emptyMeta = useMemo(() => ({}), []);
 
@@ -883,6 +897,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           syncStatus={syncStatus}
           onSaveNow={onSaveNow}
           collaborationConfig={collaborationConfig}
+          readOnly={readOnly}
         />
       </EditorProvider>
     </FontLoader>

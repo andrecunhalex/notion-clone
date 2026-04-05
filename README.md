@@ -1,36 +1,161 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lex Studio - Editor de Documentos
 
-## Getting Started
+Editor de documentos colaborativo estilo Notion, construido com Next.js, React, Yjs (CRDT) e Supabase.
 
-First, run the development server:
+## Funcionalidades
+
+### Editor
+- Blocos: texto, titulos (h1/h2/h3), listas (bullet/numerada), tabelas, imagens, dividers
+- Design blocks: templates HTML/Tailwind customizaveis (cards, callouts, itens numerados)
+- Formatacao rica: negrito, italico, sublinhado, cores de texto/fundo, fontes, tamanhos
+- Drag-and-drop de blocos
+- Modo paginado (A4) com zoom e modo continuo
+- Slash menu (`/`) para inserir blocos
+- Undo/Redo com historico
+- Navegacao por secoes (sumario lateral + botoes de navegacao nas paginas)
+- Full-width toggle para blocos
+
+### Colaboracao em tempo real
+- Yjs (CRDT) para merge automatico de edicoes
+- Supabase Realtime para sincronizacao entre usuarios
+- IndexedDB para cache offline
+- Cursores remotos com posicao em tempo real
+- Presenca de usuarios na toolbar
+- Modo solo otimizado (sem broadcasts quando sozinho)
+- Save manual (Ctrl+S)
+
+### Historico de versoes
+- Snapshots automaticos baseados em sessoes de edicao (salva ao abrir + editar)
+- Visualizacao side-by-side: versao anterior vs versao atual
+- Diff inline a nivel de palavras (texto, design blocks, celulas de tabela)
+- Destaque de blocos adicionados (verde) e removidos (vermelho)
+- Restaurar versao anterior com um clique
+- Comparacao campo-a-campo (evita falsos positivos do JSON.stringify)
+- Responsivo: tabs no mobile, side-by-side no desktop, sidebar em telas xl
+- Feature toggle: `enableVersionHistory` no config (pode ser premium)
+
+### Modo somente leitura
+- Prop `readOnly` no NotionEditor
+- Bloqueia todas as mutacoes no nivel da logica (`setBlocks` vira no-op)
+- `pointer-events: none` no conteudo (UX)
+- Toolbar, slash menu, floating toolbar ocultados
+- Drag handles invisiveis, contentEditable desabilitado
+
+## Setup
+
+### Requisitos
+- Node.js 18+
+- Conta Supabase (para colaboracao e historico de versoes)
+
+### Instalacao
+
+```bash
+npm install
+```
+
+### Variaveis de ambiente
+
+Crie `.env.local`:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+### Supabase - SQL Migrations
+
+Execute os arquivos SQL na pasta `supabase/` na ordem:
+
+```
+supabase/001_documents.sql          -- Tabela de documentos (estado Yjs)
+supabase/002_storage_images.sql     -- Storage para imagens
+supabase/003_rls_documents.sql      -- RLS para documentos
+supabase/004_document_versions.sql  -- Tabela + RLS para historico de versoes
+```
+
+### Desenvolvimento
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Acesse [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Arquitetura
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+app/
+  editor/
+    NotionEditor.tsx          -- Componente principal (suporta readOnly)
+    EditorProvider.tsx         -- Context + data source local
+    types/index.ts             -- Tipos (BlockData, EditorConfig, etc.)
+    components/
+      Block.tsx                -- Bloco individual (suporta readOnly)
+      Toolbar.tsx              -- Barra de ferramentas
+      VersionHistory.tsx       -- Overlay de historico side-by-side
+      TableBlock.tsx           -- Tabela editavel
+      ImageBlock.tsx           -- Imagem com resize
+      designBlocks/            -- Templates de design blocks
+    hooks/
+      useBlockManager.ts       -- CRUD de blocos
+      usePagination.ts         -- Paginacao A4 com medicao DOM
+      useVersionHistory.ts     -- Sessao + fetch + estado do historico
+      useKeyboardShortcuts.ts  -- Atalhos de teclado
+      useSectionNav.ts         -- Navegacao por secoes
+    collaboration/
+      useCollaborativeEditor.ts -- Hook principal (Yjs + Supabase + IndexedDB)
+      supabase-provider.ts      -- Sync com Supabase Realtime
+      yjs-sync.ts               -- Wrapper do Y.Doc
+  page.tsx                     -- Pagina principal (demo)
+supabase/
+  001_documents.sql
+  002_storage_images.sql
+  003_rls_documents.sql
+  004_document_versions.sql
+```
 
-## Learn More
+## Seguranca
 
-To learn more about Next.js, take a look at the following resources:
+### Estado atual
+- RLS habilitado nas tabelas `documents` e `document_versions` com politicas permissivas (`allow_all_for_now`)
+- Modo readOnly bloqueia mutacoes no frontend (logica + CSS)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Para producao com compartilhamento
+Quando implementar autenticacao e niveis de permissao (editor/viewer), substitua as politicas permissivas por restritivas:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```sql
+-- documents
+CREATE POLICY "owner_select" ON documents FOR SELECT
+  USING (owner_id = auth.uid()::text);
+CREATE POLICY "owner_upsert" ON documents FOR ALL
+  USING (owner_id = auth.uid()::text)
+  WITH CHECK (owner_id = auth.uid()::text);
 
-## Deploy on Vercel
+-- document_versions
+CREATE POLICY "owner_select" ON document_versions FOR SELECT
+  USING (document_id IN (SELECT id FROM documents WHERE owner_id = auth.uid()::text));
+CREATE POLICY "owner_insert" ON document_versions FOR INSERT
+  WITH CHECK (document_id IN (SELECT id FROM documents WHERE owner_id = auth.uid()::text));
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Para usuarios com permissao somente leitura (viewer):
+- Frontend: use `readOnly={true}` no `NotionEditor`
+- Backend: RLS deve permitir apenas SELECT, bloqueando INSERT/UPDATE/DELETE
+- Isso garante protecao em duas camadas (frontend + banco de dados)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Props do NotionEditor
+
+| Prop | Tipo | Descricao |
+|------|------|-----------|
+| `initialBlocks` | `BlockData[]` | Blocos iniciais |
+| `dataSource` | `EditorDataSourceInterface` | Data source externo (Yjs) |
+| `config` | `EditorConfig` | Configuracao (pagina, fontes, zoom, etc.) |
+| `readOnly` | `boolean` | Modo somente leitura |
+| `collaborationConfig` | `VersionHistoryCollabConfig` | Config Supabase para historico |
+| `initialMeta` | `Record<string, unknown>` | Metadados iniciais (fonte, tamanho) |
+| `onChange` | `(blocks) => void` | Callback de mudancas |
+| `onSaveNow` | `() => Promise<void>` | Save manual (Ctrl+S) |
+| `remoteUsers` | `PresenceUser[]` | Usuarios remotos |
+| `syncStatus` | `SyncStatus` | Status de sincronizacao |
+| `defaultViewMode` | `'paginated' \| 'continuous'` | Modo de visualizacao |
+| `title` | `string` | Titulo na toolbar |

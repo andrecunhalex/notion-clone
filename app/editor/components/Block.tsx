@@ -43,6 +43,7 @@ interface BlockProps {
   edgePadding: EdgePadding;
   isFirstOnPage?: boolean;
   isLastOnPage?: boolean;
+  readOnly?: boolean;
 }
 
 const BLOCK_STYLES: Record<string, string> = {
@@ -106,6 +107,7 @@ const BlockInner: React.FC<BlockProps> = ({
   edgePadding,
   isFirstOnPage,
   isLastOnPage,
+  readOnly,
 }) => {
   const internalRef = useRef<HTMLDivElement>(null);
   // Track whether the user is actively editing this block's contentEditable
@@ -280,10 +282,10 @@ const BlockInner: React.FC<BlockProps> = ({
       {isFullWidth ? (
         <div className={`absolute left-2 top-0 w-12 shrink-0 flex items-center justify-center ${HANDLE_LINE[block.type] || 'h-6'} z-10`}>
           <div
-            className="drag-handle p-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-gray-400 hover:bg-gray-200 rounded transition-opacity"
-            draggable
-            onDragStart={e => onDragStart(e, block.id)}
-            onMouseDown={e => e.stopPropagation()}
+            className={`drag-handle p-1 ${readOnly ? 'opacity-0' : 'opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing'} text-gray-400 hover:bg-gray-200 rounded transition-opacity`}
+            draggable={!readOnly}
+            onDragStart={readOnly ? undefined : e => onDragStart(e, block.id)}
+            onMouseDown={readOnly ? undefined : e => e.stopPropagation()}
           >
             <GripVertical size={16} />
           </div>
@@ -291,10 +293,10 @@ const BlockInner: React.FC<BlockProps> = ({
       ) : (
         <div className={`w-12 shrink-0 flex items-center justify-center ${HANDLE_LINE[block.type] || 'h-6'}`}>
           <div
-            className="drag-handle p-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-gray-400 hover:bg-gray-200 rounded transition-opacity"
-            draggable
-            onDragStart={e => onDragStart(e, block.id)}
-            onMouseDown={e => e.stopPropagation()}
+            className={`drag-handle p-1 ${readOnly ? 'opacity-0' : 'opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing'} text-gray-400 hover:bg-gray-200 rounded transition-opacity`}
+            draggable={!readOnly}
+            onDragStart={readOnly ? undefined : e => onDragStart(e, block.id)}
+            onMouseDown={readOnly ? undefined : e => e.stopPropagation()}
           >
             <GripVertical size={16} />
           </div>
@@ -344,14 +346,14 @@ const BlockInner: React.FC<BlockProps> = ({
             {renderListMarker()}
             <div
               id={`editable-${block.id}`}
-              contentEditable
+              contentEditable={!readOnly}
               suppressContentEditableWarning
-              className={`outline-none cursor-text flex-1 min-w-0 editable-block ${BLOCK_STYLES[block.type]}`}
+              className={`outline-none ${readOnly ? 'cursor-default' : 'cursor-text'} flex-1 min-w-0 editable-block ${BLOCK_STYLES[block.type]}`}
               style={alignStyle}
-              data-placeholder={isList ? 'Lista...' : "Digite '/' para comandos..."}
-              onKeyDown={handleKeyDown}
-              onInput={handleInput}
-              onFocus={handleFocus}
+              data-placeholder={!readOnly ? (isList ? 'Lista...' : "Digite '/' para comandos...") : undefined}
+              onKeyDown={readOnly ? undefined : handleKeyDown}
+              onInput={readOnly ? undefined : handleInput}
+              onFocus={readOnly ? undefined : handleFocus}
             />
           </div>
         )}
@@ -372,6 +374,7 @@ export const Block = memo(BlockInner, (prev, next) => {
     prev.isFirstOnPage === next.isFirstOnPage &&
     prev.isLastOnPage === next.isLastOnPage &&
     prev.dropTarget?.id === next.dropTarget?.id &&
-    prev.dropTarget?.position === next.dropTarget?.position
+    prev.dropTarget?.position === next.dropTarget?.position &&
+    prev.readOnly === next.readOnly
   );
 });
