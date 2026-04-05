@@ -678,7 +678,7 @@ const NotionEditorInner: React.FC<{
           }`}
           style={{
             fontFamily: documentFont || undefined,
-            fontSize: `${documentFontSize}px`,
+            fontSize: `${documentFontSize}pt`,
             ...(viewMode === 'paginated' ? {
               width: pageConfig.width,
               transform: `scale(${zoom})`,

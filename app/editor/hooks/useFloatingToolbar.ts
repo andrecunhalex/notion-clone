@@ -149,7 +149,7 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
         const computed = window.getComputedStyle(el);
         const family = computed.fontFamily;
         const weight = parseInt(computed.fontWeight, 10) || 400;
-        const fontSize = Math.round(parseFloat(computed.fontSize)) || DEFAULT_FONT_SIZE;
+        const fontSize = Math.round(parseFloat(computed.fontSize) * 0.75) || DEFAULT_FONT_SIZE;
         setCurrentFontSize(fontSize);
         const sortedFonts = [...allFonts].sort((a, b) => (b.isCustom ? 1 : 0) - (a.isCustom ? 1 : 0));
         const matched = sortedFonts.find(f =>
@@ -596,7 +596,7 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     const range = sel.getRangeAt(0);
     const styledSpan = findStyledSpan(sel.anchorNode);
     const coversAll = styledSpan && styledSpan.contains(sel.focusNode) && selectionCoversSpan(range, styledSpan);
-    const sizeVal = `${size}px`;
+    const sizeVal = `${size}pt`;
 
     if (coversAll && styledSpan) {
       styledSpan.style.fontSize = sizeVal;

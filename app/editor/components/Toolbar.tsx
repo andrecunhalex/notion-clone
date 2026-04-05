@@ -215,7 +215,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             onClick={() => { setSizeOpen(!sizeOpen); setFontOpen(false); setCustomSizeValue(''); }}
             title="Tamanho da fonte do documento"
           >
-            <span className="tabular-nums">{documentFontSize}px</span>
+            <span className="tabular-nums">{documentFontSize}</span>
             <ChevronDown size={12} />
           </button>
           {sizeOpen && (

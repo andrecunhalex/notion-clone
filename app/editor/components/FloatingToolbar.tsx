@@ -101,7 +101,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
             className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 ${toolbar.sizeOpen ? 'bg-gray-100' : ''}`}
             onClick={() => { toolbar.setSizeOpen(!toolbar.sizeOpen); toolbar.closeSubmenusExcept('size'); }}
           >
-            <span className="truncate tabular-nums">{toolbar.currentFontSize}px</span>
+            <span className="truncate tabular-nums">{toolbar.currentFontSize}</span>
             <ChevronDown size={10} />
           </button>
         </Tooltip>

@@ -50,11 +50,11 @@ export const WEIGHT_LABELS: Record<number, string> = {
   900: 'Black',
 };
 
-/** Font size presets (shared between floating toolbar and document toolbar) */
-export const SIZE_PRESETS = [12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72] as const;
+/** Font size presets in pt (shared between floating toolbar and document toolbar) */
+export const SIZE_PRESETS = [8, 9, 10, 11, 12, 14, 18, 24, 30, 36, 48, 60, 72, 96] as const;
 
-/** Default document font size in px */
-export const DEFAULT_FONT_SIZE = 16;
+/** Default document font size in pt (matches Google Docs / Word default) */
+export const DEFAULT_FONT_SIZE = 11;
 
 // --- Fontes do sistema (sempre disponíveis) ---
 export const SYSTEM_FONTS: FontEntry[] = [
