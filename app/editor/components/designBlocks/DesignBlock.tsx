@@ -1,8 +1,12 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { Image, Shapes } from 'lucide-react';
 import { BlockData } from '../../types';
 import { getTemplate } from './registry';
+import { IconPicker } from './IconPicker';
+import { useSwappable } from './useSwappable';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -39,15 +43,11 @@ function sanitizeHtml(html: string): string {
     for (const child of children) {
       if (child.nodeType === Node.ELEMENT_NODE) {
         const el = child as HTMLElement;
-        // Strip disallowed elements but keep their text content
         if (!ALLOWED_TAGS.has(el.tagName)) {
-          // Move children up before removing the element
           while (el.firstChild) node.insertBefore(el.firstChild, el);
           node.removeChild(el);
           continue;
         }
-        // Remove dangerous attributes (event handlers, script URLs)
-        // Keep: style, color, class, href (non-javascript), face, size
         for (const attr of Array.from(el.attributes)) {
           const name = attr.name.toLowerCase();
           if (name.startsWith('on')) {
@@ -78,8 +78,6 @@ interface DesignBlockProps {
 
 export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, uploadImage, autoNumber }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const activeSwapKey = useRef<string | null>(null);
   const isLocalEdit = useRef(false);
   const isBuilt = useRef(false);
   const mountedTemplateId = useRef<string | null>(null);
@@ -100,7 +98,7 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
 
   const values = data.values;
 
-  // Save values with sanitization
+  // Save values with sanitization (for editable HTML content)
   const saveValues = useCallback((updated: Record<string, string>) => {
     isLocalEdit.current = true;
     const sanitized: Record<string, string> = {};
@@ -112,7 +110,18 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
     });
   }, [block.id]);
 
-  // Keyboard handler for editable zones (attached once, uses refs for fresh values)
+  // Save values without sanitization (for URLs / image sources)
+  const saveRawValues = useCallback((updated: Record<string, string>) => {
+    isLocalEdit.current = true;
+    updateBlockRef.current(block.id, {
+      designBlockData: { ...dataRef.current!, values: { ...valuesRef.current, ...updated } },
+    });
+  }, [block.id]);
+
+  // Swappable images/icons hook
+  const swap = useSwappable({ containerRef, saveValues: saveRawValues, uploadImage });
+
+  // Keyboard handler for editable zones
   const handleZoneKeyDown = useCallback((e: KeyboardEvent, el: HTMLElement) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -125,7 +134,6 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
     if (e.key === '/') {
       e.stopPropagation();
     }
-    // ArrowUp/Down: navigate between zones, then escape to adjacent blocks
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) return;
@@ -173,7 +181,6 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
     const container = containerRef.current;
     if (!container) return;
 
-    // Skip when we just saved locally (DOM is already up to date)
     if (isLocalEdit.current) {
       isLocalEdit.current = false;
       return;
@@ -182,11 +189,9 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
     const needsFullBuild = !isBuilt.current || mountedTemplateId.current !== data.templateId;
 
     if (needsFullBuild) {
-      // --- Full build: first render or template changed ---
       const div = document.createElement('div');
       div.innerHTML = template.html;
 
-      // Inject values + make editable
       div.querySelectorAll<HTMLElement>('[data-editable]').forEach(el => {
         const key = el.getAttribute('data-editable')!;
         el.innerHTML = sanitizeHtml(values[key] ?? template.defaults[key] ?? '');
@@ -197,20 +202,18 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
         el.style.fontSize = 'inherit';
       });
 
-      // Inject swappable images
       div.querySelectorAll<HTMLImageElement>('[data-swappable]').forEach(el => {
         const key = el.getAttribute('data-swappable')!;
         el.src = values[key] ?? template.defaults[key] ?? '';
       });
 
-      // Inject auto-number (read-only, computed from document position)
       div.querySelectorAll<HTMLElement>('[data-autonumber]').forEach(el => {
         el.textContent = autoNumber ?? '';
       });
 
       container.innerHTML = div.innerHTML;
 
-      // Attach listeners ONCE
+      // Attach editable listeners
       container.querySelectorAll<HTMLElement>('[data-editable]').forEach(el => {
         el.addEventListener('input', () => {
           const key = el.getAttribute('data-editable')!;
@@ -220,28 +223,12 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
         el.addEventListener('keydown', (e) => handleZoneKeyDown(e, el));
       });
 
-      container.querySelectorAll<HTMLElement>('[data-swappable]').forEach(el => {
-        el.style.cursor = 'pointer';
-        el.style.transition = 'box-shadow 0.15s ease';
-        el.addEventListener('mouseenter', () => {
-          el.style.boxShadow = '0 0 0 2px rgba(139, 92, 246, 0.5)';
-          el.style.borderRadius = '8px';
-        });
-        el.addEventListener('mouseleave', () => {
-          el.style.boxShadow = 'none';
-        });
-        el.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          activeSwapKey.current = el.getAttribute('data-swappable');
-          fileInputRef.current?.click();
-        });
-      });
+      // Attach swappable listeners (delegated to hook)
+      swap.attachSwapListeners(container);
 
       isBuilt.current = true;
       mountedTemplateId.current = data.templateId;
     } else {
-      // --- Surgical update: only patch changed zones (collab/undo) ---
       container.querySelectorAll<HTMLElement>('[data-editable]').forEach(el => {
         const key = el.getAttribute('data-editable')!;
         const newVal = sanitizeHtml(values[key] ?? template.defaults[key] ?? '');
@@ -258,12 +245,11 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
       });
     }
 
-    // Always update auto-number (cheap, no rebuild needed)
     container.querySelectorAll<HTMLElement>('[data-autonumber]').forEach(el => {
       const num = autoNumber ?? '';
       if (el.textContent !== num) el.textContent = num;
     });
-  }, [data.templateId, JSON.stringify(values), autoNumber, template, saveValues, handleZoneKeyDown]);
+  }, [data.templateId, JSON.stringify(values), autoNumber, template, saveValues, handleZoneKeyDown, swap.attachSwapListeners]);
 
   // Apply text alignment to all editable zones
   useEffect(() => {
@@ -280,43 +266,64 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
     return () => { isBuilt.current = false; };
   }, []);
 
-  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    const key = activeSwapKey.current;
-    if (!file || !key) return;
-
-    let src: string;
-    if (uploadImage) {
-      const url = await uploadImage(file);
-      src = url || URL.createObjectURL(file);
-    } else {
-      src = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.readAsDataURL(file);
-      });
-    }
-
-    saveValues({ [key]: src });
-
-    // Update DOM immediately
-    const img = containerRef.current?.querySelector(`[data-swappable="${key}"]`) as HTMLImageElement;
-    if (img) img.src = src;
-
-    e.target.value = '';
-    activeSwapKey.current = null;
-  }, [uploadImage, saveValues]);
-
   return (
-    <div className="my-1">
+    <div className="my-1 relative">
       <div ref={containerRef} className="design-block-container" />
       <input
-        ref={fileInputRef}
+        ref={swap.fileInputRef}
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={handleFileChange}
+        onChange={swap.handleFileChange}
       />
+
+      {/* Swap choice popover (portal to body to avoid transform issues) */}
+      {swap.swapPopover && createPortal(
+        <div
+          ref={swap.popoverRef}
+          className="fixed z-9999 bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-44"
+          style={{
+            left: swap.swapPopover.x,
+            top: swap.swapPopover.y,
+            transform: 'translateX(-50%)',
+          }}
+          onMouseDown={e => e.stopPropagation()}
+        >
+          <button
+            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors flex items-center gap-2.5 text-gray-700"
+            onClick={swap.openIconPicker}
+          >
+            <Shapes size={16} className="text-purple-500" />
+            Escolher ícone
+          </button>
+          <button
+            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors flex items-center gap-2.5 text-gray-700"
+            onClick={swap.openFileInput}
+          >
+            <Image size={16} className="text-blue-500" />
+            Enviar imagem
+          </button>
+        </div>,
+        document.body,
+      )}
+
+      {/* Icon picker floating panel (portal to body) */}
+      {swap.iconPickerOpen && createPortal(
+        <div
+          className="fixed z-9999"
+          style={{
+            left: swap.iconPickerPos.x,
+            top: swap.iconPickerPos.y,
+            transform: 'translateX(-50%)',
+          }}
+        >
+          <IconPicker
+            onSelect={swap.handleIconSelect}
+            onClose={swap.handleCloseIconPicker}
+          />
+        </div>,
+        document.body,
+      )}
     </div>
   );
 };
