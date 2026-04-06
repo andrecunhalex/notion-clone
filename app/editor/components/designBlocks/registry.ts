@@ -149,22 +149,7 @@ export const DESIGN_TEMPLATES: DesignBlockTemplate[] = [
   </div>
 </div>`,
   },
-  {
-    id: 'frame_5-70-29',
-    name: 'Frame 5',
-    defaults: {
-      frame_104: `https://vklmpyecqyqnbtifshmf.supabase.co/storage/v1/object/public/figma-images/OrNTggWUGkp0E2asf1hL2w/70-30.png`,
-      t_tulo_do_componente: `Título do componente`,
-      descri_o_aqui: `Descrição aqui...`,
-    },
-    html: `<div style="display: flex; gap: 10px; overflow: hidden; width: 307px; background-color: #ffffff; padding: 10px">
-  <img style="width: 108px; height: 108px" data-swappable="frame_104" src="" alt="Frame 104" />
-  <div style="display: flex; flex-direction: column; gap: 10px; overflow: hidden; width: 169px; align-self: stretch; background-color: #bdfbc7; padding: 10px">
-    <div style="align-self: stretch; font-size: 14px; font-weight: 600; font-family: 'Inter', sans-serif; line-height: 17px; color: #000000" data-editable="t_tulo_do_componente"></div>
-    <div style="align-self: stretch; font-size: 12px; font-family: 'Inter', sans-serif; line-height: 15px; color: #ff0000" data-editable="descri_o_aqui"></div>
-  </div>
-</div>`,
-  }
+  
 ];
 
 export function getTemplate(id: string): DesignBlockTemplate | undefined {
