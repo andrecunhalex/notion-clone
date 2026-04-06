@@ -63,17 +63,20 @@ export const useClipboard = ({ blocks, setBlocks, selectedIds, setSelectedIds }:
     if (!processedBlocks) {
       const active = document.activeElement as HTMLElement;
       const isEditing = active?.isContentEditable &&
-        (active.id?.startsWith('editable-') || active.hasAttribute('data-table-cell'));
+        (active.id?.startsWith('editable-') || active.hasAttribute('data-table-cell') || active.hasAttribute('data-editable'));
 
       if (isEditing) {
+        const isDesignBlock = active.hasAttribute('data-editable');
         const htmlBlocks = html ? parseHtmlToBlocks(html) : null;
         const isSimplePaste = !htmlBlocks || (
           htmlBlocks.length === 1 && htmlBlocks[0].type === 'text'
         );
 
-        if (isSimplePaste) {
+        if (isSimplePaste || isDesignBlock) {
           e.preventDefault();
-          const cleanHtml = htmlBlocks?.[0]?.content || text || '';
+          const cleanHtml = isSimplePaste
+            ? (htmlBlocks?.[0]?.content || text || '')
+            : (htmlBlocks?.map(b => b.content).join(' ') || text || '');
           if (cleanHtml) {
             document.execCommand('insertHTML', false, cleanHtml);
             active.dispatchEvent(new Event('input', { bubbles: true }));
