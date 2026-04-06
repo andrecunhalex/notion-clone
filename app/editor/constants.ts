@@ -12,7 +12,7 @@ export interface ColorOption {
 // --- Paleta de cores (estilo Notion) ---
 
 export const TEXT_COLORS: ColorOption[] = [
-  { name: 'Padrão', value: '', preview: '#37352F', border: true },
+  { name: 'Preto', value: '#000000', preview: '#000000' },
   { name: 'Cinza', value: '#9B9A97', preview: '#9B9A97' },
   { name: 'Marrom', value: '#64473A', preview: '#64473A' },
   { name: 'Laranja', value: '#D9730D', preview: '#D9730D' },
@@ -25,7 +25,7 @@ export const TEXT_COLORS: ColorOption[] = [
 ];
 
 export const BG_COLORS: ColorOption[] = [
-  { name: 'Padrão', value: '', preview: '#FFFFFF', border: true },
+  { name: 'Branco', value: '#FFFFFF', preview: '#FFFFFF', border: true },
   { name: 'Cinza', value: '#F1F1EF', preview: '#F1F1EF' },
   { name: 'Marrom', value: '#F4EEEE', preview: '#F4EEEE' },
   { name: 'Laranja', value: '#FBECDD', preview: '#FBECDD' },
@@ -40,6 +40,7 @@ export const BG_COLORS: ColorOption[] = [
 // Versão com nomes estendidos para contexto de tabela
 export const TABLE_TEXT_COLORS: ColorOption[] = [
   { name: 'Texto padrão', value: '', preview: '#37352F' },
+  { name: 'Texto preto', value: '#000000', preview: '#000000' },
   { name: 'Texto cinza', value: '#9B9A97', preview: '#9B9A97' },
   { name: 'Texto marrom', value: '#64473A', preview: '#64473A' },
   { name: 'Texto laranja', value: '#D9730D', preview: '#D9730D' },
@@ -53,6 +54,7 @@ export const TABLE_TEXT_COLORS: ColorOption[] = [
 
 export const TABLE_BG_COLORS: ColorOption[] = [
   { name: 'Fundo padrão', value: '', preview: '#FFFFFF' },
+  { name: 'Fundo branco', value: '#FFFFFF', preview: '#FFFFFF', border: true },
   { name: 'Fundo cinza', value: '#F1F1EF', preview: '#F1F1EF' },
   { name: 'Fundo marrom', value: '#F4EEEE', preview: '#F4EEEE' },
   { name: 'Fundo laranja', value: '#FBECDD', preview: '#FBECDD' },

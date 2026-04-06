@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { X } from 'lucide-react';
 import { TEXT_COLORS, BG_COLORS, normalizeColor } from '../../constants';
 
 interface ColorPickerProps {
@@ -25,12 +26,22 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
     }}
     onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
   >
-    <div className="text-xs font-medium text-gray-500 mb-1.5">Cor do texto</div>
+    <div className="flex items-center justify-between mb-1.5">
+      <span className="text-xs font-medium text-gray-500">Cor do texto</span>
+      {currentTextColor && (
+        <button
+          className="flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
+          title="Limpar cor do texto"
+          onClick={() => onTextColor('')}
+        >
+          <X size={10} />
+          <span>Limpar</span>
+        </button>
+      )}
+    </div>
     <div className="grid grid-cols-5 gap-1 mb-3">
       {TEXT_COLORS.map(c => {
-        const isActive = c.value
-          ? normalizeColor(currentTextColor) === normalizeColor(c.value)
-          : !currentTextColor;
+        const isActive = normalizeColor(currentTextColor) === normalizeColor(c.value);
         return (
           <button
             key={c.name}
@@ -46,12 +57,22 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
       })}
     </div>
 
-    <div className="text-xs font-medium text-gray-500 mb-1.5">Cor de fundo</div>
+    <div className="flex items-center justify-between mb-1.5">
+      <span className="text-xs font-medium text-gray-500">Cor de fundo</span>
+      {currentBgColor && (
+        <button
+          className="flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
+          title="Limpar cor de fundo"
+          onClick={() => onBgColor('')}
+        >
+          <X size={10} />
+          <span>Limpar</span>
+        </button>
+      )}
+    </div>
     <div className="grid grid-cols-5 gap-1">
       {BG_COLORS.map(c => {
-        const isActive = c.value
-          ? normalizeColor(currentBgColor) === normalizeColor(c.value)
-          : !currentBgColor;
+        const isActive = normalizeColor(currentBgColor) === normalizeColor(c.value);
         return (
           <button
             key={c.name}
