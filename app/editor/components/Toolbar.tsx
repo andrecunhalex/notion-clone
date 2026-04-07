@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { RotateCcw, RotateCw, FileText, Scroll, ChevronDown, X, ZoomIn, ZoomOut, MoveHorizontal, MoreHorizontal, List, Clock } from 'lucide-react';
+import { RotateCcw, RotateCw, FileText, Scroll, ChevronDown, X, ZoomIn, ZoomOut, MoveHorizontal, MoreHorizontal, List, Clock, Settings } from 'lucide-react';
 import { ViewMode } from '../types';
 import { SIZE_PRESETS, DEFAULT_FONT_SIZE } from '../fonts';
 import { useFonts } from './FontLoader';
@@ -49,6 +49,8 @@ interface ToolbarProps {
   onToggleSectionPanel?: () => void;
   /** Open version history overlay */
   onOpenVersionHistory?: () => void;
+  /** Toggle document settings panel */
+  onToggleSettings?: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -76,6 +78,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   hasSections,
   onToggleSectionPanel,
   onOpenVersionHistory,
+  onToggleSettings,
 }) => {
   const { allFonts, customFonts } = useFonts();
   const [fontOpen, setFontOpen] = useState(false);
@@ -279,6 +282,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </>
         )}
 
+        {onToggleSettings && (
+          <button
+            onClick={onToggleSettings}
+            className="p-1 hover:bg-gray-100 rounded text-gray-500"
+            title="Configurações do documento"
+          >
+            <Settings size={16} />
+          </button>
+        )}
+
         {onToggleFullWidth && (
           <>
             <div className="w-px h-4 bg-gray-200 mx-1" />
@@ -406,6 +419,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 >
                   <Clock size={16} />
                   Histórico de versões
+                </button>
+              )}
+
+              {/* Document settings */}
+              {onToggleSettings && (
+                <button
+                  onClick={() => { onToggleSettings(); setMobileMenuOpen(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <Settings size={16} />
+                  Configurações do docs
                 </button>
               )}
 

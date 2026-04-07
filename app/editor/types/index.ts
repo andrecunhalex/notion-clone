@@ -97,6 +97,38 @@ export interface PageBackground {
   overrides?: Record<number, string | null>;
 }
 
+// ---------------------------------------------------------------------------
+// Document Settings (persisted in meta)
+// ---------------------------------------------------------------------------
+
+/** Page dimensions + margins — persisted in meta.documentSettings.page */
+export interface DocumentPageSettings {
+  width?: number;
+  height?: number;
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
+}
+
+export interface DocumentSettings {
+  page?: DocumentPageSettings;
+  /** Section nav visibility: true = all pages, false = none, number[] = specific pages (0-based) */
+  sectionNavPages?: boolean | number[];
+}
+
+/** Page format presets */
+export interface PagePreset {
+  name: string;
+  width: number;
+  height: number;
+}
+
+export const PAGE_PRESETS: PagePreset[] = [
+  { name: 'A4', width: 794, height: 1123 },
+  { name: 'Slide', width: 1056, height: 594 },
+];
+
 // Page dimensions and padding configuration
 export interface PageConfig {
   /** Page width in px (default: 794 — A4 at 96dpi) */
@@ -259,6 +291,8 @@ export interface DocumentMetaInput {
   documentFontSize?: number;
   /** Page background images */
   pageBackground?: PageBackground;
+  /** Document settings (page dimensions, margins) — persisted */
+  documentSettings?: DocumentSettings;
   /** Section navigation metadata (custom labels, hidden sections) */
   sectionNav?: Record<string, unknown>;
   /** Allow additional metadata keys */

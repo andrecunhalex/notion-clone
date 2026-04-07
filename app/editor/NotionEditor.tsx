@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig, VersionHistoryCollabConfig, CommentUser, CommentThread, PageBackground } from './types';
+import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig, VersionHistoryCollabConfig, CommentUser, CommentThread, PageBackground, DocumentSettings, DocumentPageSettings } from './types';
 import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty, resolvePageConfig, getContentHeight } from './utils';
 import {
   useBlockManager,
@@ -13,7 +13,7 @@ import {
   useSectionNav,
   useComments,
 } from './hooks';
-import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar, SectionNav, SectionTocPage, CommentsSidebar } from './components';
+import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar, SectionNav, SectionTocPage, CommentsSidebar, DocumentSettingsPanel } from './components';
 import { SectionNavPanel } from './components/SectionNavPanel';
 import { VersionHistoryOverlay } from './components/VersionHistory';
 import type { SectionNavMeta } from './hooks/useSectionNav';
@@ -50,8 +50,18 @@ const NotionEditorInner: React.FC<{
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const activeBlockIdRef = useRef<string | null>(null);
 
-  const pageConfig = useMemo(() => resolvePageConfig(config.page), [config.page]);
+  // Document settings from meta (persisted) with config as fallback
+  const documentSettings = (meta.documentSettings as DocumentSettings) || undefined;
+  const mergedPageInput = useMemo(() => ({
+    ...config.page,
+    ...documentSettings?.page,
+  }), [config.page, documentSettings?.page]);
+  const pageConfig = useMemo(() => resolvePageConfig(mergedPageInput), [mergedPageInput]);
   const pageContentHeight = config.pageContentHeight ?? getContentHeight(pageConfig);
+
+  const setDocumentPageSettings = useCallback((page: DocumentPageSettings) => {
+    setMeta({ documentSettings: { ...documentSettings, page } });
+  }, [setMeta, documentSettings]);
 
   const documentFont = (meta.documentFont as string) || SYSTEM_FONTS[0].family;
   const setDocumentFont = useCallback((font: string) => {
@@ -65,6 +75,12 @@ const NotionEditorInner: React.FC<{
   const pageBackground = (meta.pageBackground as PageBackground)
     || (initialMeta?.pageBackground as PageBackground)
     || undefined;
+  const setPageBackground = useCallback((bg: PageBackground | undefined) => {
+    setMeta({ pageBackground: bg || undefined });
+  }, [setMeta]);
+  const setSectionNavPages = useCallback((pages: boolean | number[]) => {
+    setMeta({ documentSettings: { ...documentSettings, sectionNavPages: pages } });
+  }, [setMeta, documentSettings]);
 
   // Section nav metadata (custom labels, hidden sections)
   const sectionNavMeta = (meta.sectionNav as SectionNavMeta) || {};
@@ -87,6 +103,9 @@ const NotionEditorInner: React.FC<{
     blocks, sectionNavMeta, setSectionNavMeta, scrollRef,
     maxLabelLength: navConfig.maxLabelLength,
   });
+
+  // Document settings panel
+  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
 
   // Version history
   const versionHistory = useVersionHistory({
@@ -372,13 +391,22 @@ const NotionEditorInner: React.FC<{
   }, [pages, sectionBlockIds]);
 
   // Determine which pages show the nav bar
+  // documentSettings.sectionNavPages (meta, persisted) overrides config.sectionNav.pages
+  const sectionNavPagesFromMeta = documentSettings?.sectionNavPages;
   const shouldShowNav = useCallback((pageIndex: number): boolean => {
     if (!hasSections) return false;
+    // Meta override takes priority
+    if (sectionNavPagesFromMeta !== undefined) {
+      if (sectionNavPagesFromMeta === false) return false;
+      if (sectionNavPagesFromMeta === true) return true;
+      if (Array.isArray(sectionNavPagesFromMeta)) return sectionNavPagesFromMeta.includes(pageIndex);
+    }
+    // Fallback to config
     if (navPageFilter === 'none') return false;
     if (navPageFilter === 'all') return true;
     if (Array.isArray(navPageFilter)) return navPageFilter.includes(pageIndex);
     return navPageFilter(pageIndex, pages.length);
-  }, [hasSections, navPageFilter, pages.length]);
+  }, [hasSections, sectionNavPagesFromMeta, navPageFilter, pages.length]);
 
   // Build section → page number map (1-based, accounting for TOC page offset)
   const sectionPageMap = useMemo(() => {
@@ -680,6 +708,7 @@ const NotionEditorInner: React.FC<{
         hasSections={hasSections}
         onToggleSectionPanel={() => setSectionPanelOpen(prev => !prev)}
         onOpenVersionHistory={versionHistory.available ? versionHistory.open : undefined}
+        onToggleSettings={() => setSettingsPanelOpen(prev => !prev)}
       />}
 
       {/* Scroll container — takes all remaining space below toolbar (flex-1).
@@ -884,6 +913,22 @@ const NotionEditorInner: React.FC<{
           onScrollTo={scrollToSection}
           onSetLabel={setCustomLabel}
           onToggleHidden={toggleHidden}
+        />
+      )}
+
+      {!readOnly && settingsPanelOpen && (
+        <DocumentSettingsPanel
+          isOpen={settingsPanelOpen}
+          onToggle={() => setSettingsPanelOpen(prev => !prev)}
+          pageSettings={pageConfig}
+          pageBackground={pageBackground}
+          totalPages={pages.length}
+          onPageSettingsChange={setDocumentPageSettings}
+          onPageBackgroundChange={setPageBackground}
+          sectionNavPages={sectionNavPagesFromMeta}
+          onSectionNavPagesChange={setSectionNavPages}
+          hasSections={hasSections}
+          uploadImage={config.uploadImage}
         />
       )}
 
