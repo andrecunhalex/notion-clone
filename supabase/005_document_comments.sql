@@ -39,3 +39,12 @@ create policy "allow_all_for_now"
   for all
   using (true)
   with check (true);
+
+-- =============================================================================
+-- Realtime
+-- =============================================================================
+-- Enable Supabase Realtime on this table so comment changes are pushed
+-- to all connected clients in real time.
+-- =============================================================================
+
+alter publication supabase_realtime add table document_comments;

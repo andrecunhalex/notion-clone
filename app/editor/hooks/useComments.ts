@@ -86,9 +86,13 @@ export const useComments = ({ enabled, user, collabConfig, onChange }: UseCommen
     return getSupabaseClient(supabaseUrl, supabaseAnonKey);
   }, [supabaseUrl, supabaseAnonKey]);
 
+  // --- Load comments + subscribe to realtime changes ---
+
   useEffect(() => {
     if (!enabled || !supabaseUrl || !supabaseAnonKey || !docId) return;
     const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
+
+    // Initial fetch
     supabase
       .from('document_comments')
       .select('*')
@@ -104,6 +108,47 @@ export const useComments = ({ enabled, user, collabConfig, onChange }: UseCommen
         setThreads(loaded);
         onChangeRef.current?.(loaded);
       });
+
+    // Realtime subscription for INSERT, UPDATE, DELETE
+    const channel = supabase
+      .channel(`comments:${docId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'document_comments', filter: `document_id=eq.${docId}` },
+        (payload) => {
+          if (!mountedRef.current) return;
+
+          if (payload.eventType === 'INSERT') {
+            const thread = rowToThread(payload.new as Record<string, unknown>);
+            setThreads(prev => {
+              // Avoid duplicates (we may have already added it locally)
+              if (prev.some(t => t.id === thread.id)) return prev;
+              const next = [...prev, thread];
+              onChangeRef.current?.(next);
+              return next;
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const thread = rowToThread(payload.new as Record<string, unknown>);
+            setThreads(prev => {
+              const next = prev.map(t => t.id === thread.id ? thread : t);
+              onChangeRef.current?.(next);
+              return next;
+            });
+          } else if (payload.eventType === 'DELETE') {
+            const oldId = (payload.old as Record<string, unknown>).id as string;
+            setThreads(prev => {
+              const next = prev.filter(t => t.id !== oldId);
+              onChangeRef.current?.(next);
+              return next;
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [enabled, supabaseUrl, supabaseAnonKey, docId]);
 
   // --- User helper ---
