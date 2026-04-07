@@ -951,6 +951,7 @@ const NotionEditorInner: React.FC<{
           documentFontSize={documentFontSize}
           onRestore={handleVersionRestore}
           editorConfig={config}
+          currentMeta={meta}
         />
       )}
     </div>

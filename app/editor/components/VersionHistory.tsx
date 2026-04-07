@@ -235,6 +235,8 @@ interface VersionHistoryOverlayProps {
   onRestore: (blocks: BlockData[]) => void;
   /** Pass through the editor config for page dimensions, fonts, etc. */
   editorConfig?: import('../types').EditorConfig;
+  /** Current document meta (for pageBackground, documentSettings, etc.) */
+  currentMeta?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,6 +250,7 @@ export const VersionHistoryOverlay: React.FC<VersionHistoryOverlayProps> = ({
   documentFontSize,
   onRestore,
   editorConfig = {},
+  currentMeta,
 }) => {
   const { versions, loading, selectedVersion, selectVersion, restore, close } = versionHistory;
 
@@ -428,7 +431,7 @@ export const VersionHistoryOverlay: React.FC<VersionHistoryOverlayProps> = ({
               <NotionEditor
                 key={`right-${selectedVersion.id}-${mobileTab}`}
                 initialBlocks={rightBlocks}
-                initialMeta={{ documentFont, documentFontSize }}
+                initialMeta={{ ...currentMeta, documentFont, documentFontSize }}
                 defaultViewMode="paginated"
                 title=""
                 readOnly
@@ -441,7 +444,7 @@ export const VersionHistoryOverlay: React.FC<VersionHistoryOverlayProps> = ({
             <NotionEditor
               key="current-only"
               initialBlocks={prefixBlockIds(currentBlocks, 'vhc-')}
-              initialMeta={{ documentFont, documentFontSize }}
+              initialMeta={{ ...currentMeta, documentFont, documentFontSize }}
               defaultViewMode="paginated"
               title=""
               readOnly
