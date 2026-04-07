@@ -1,7 +1,7 @@
 'use client';
 
 import React, { memo, useEffect, useState, useRef, useCallback } from 'react';
-import { RemoteUser, CursorPosition } from './types';
+import { RemoteUser } from './types';
 
 // ---------------------------------------------------------------------------
 // Helpers: resolve character offset → DOM position

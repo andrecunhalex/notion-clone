@@ -140,10 +140,10 @@ export const SectionNavPanel: React.FC<SectionNavPanelProps> = ({
 
   return (
     <>
-      {/* ---- Desktop: floating card ---- */}
+      {/* ---- Desktop: floating card (hidden on screens where it would overlap the page) ---- */}
       <div
         data-editor-toolbar
-        className="hidden md:block fixed left-5 top-20 z-50"
+        className="hidden lg:block fixed left-5 top-20 z-50"
         style={{ maxHeight: 'calc(100vh - 80px)' }}
       >
         <div
@@ -165,10 +165,10 @@ export const SectionNavPanel: React.FC<SectionNavPanelProps> = ({
         </div>
       </div>
 
-      {/* ---- Mobile: bottom sheet ---- */}
+      {/* ---- Mobile/tablet: bottom sheet (shown below lg breakpoint) ---- */}
       {/* Backdrop */}
       <div
-        className={`md:hidden fixed inset-0 z-50 bg-black/30 transition-opacity duration-200 ${
+        className={`lg:hidden fixed inset-0 z-50 bg-black/30 transition-opacity duration-200 ${
           isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={onToggle}
@@ -176,7 +176,7 @@ export const SectionNavPanel: React.FC<SectionNavPanelProps> = ({
       {/* Sheet */}
       <div
         data-editor-toolbar
-        className={`md:hidden fixed left-0 right-0 bottom-0 z-50 transition-transform duration-300 ease-out ${
+        className={`lg:hidden fixed left-0 right-0 bottom-0 z-50 transition-transform duration-300 ease-out ${
           isOpen ? 'translate-y-0' : 'translate-y-full'
         }`}
       >
