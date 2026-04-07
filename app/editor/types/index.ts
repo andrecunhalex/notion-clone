@@ -78,6 +78,25 @@ export interface EditorDataSourceInterface {
   setMeta?: (updates: Record<string, unknown>) => void;
 }
 
+// ---------------------------------------------------------------------------
+// Page Background
+// ---------------------------------------------------------------------------
+
+/**
+ * Background image configuration for document pages.
+ * Stored in document metadata (persists via Yjs/Supabase).
+ *
+ * - `defaultImage`: URL applied to every page by default
+ * - `overrides`: per-page overrides by page index (0-based)
+ *     - string URL → custom image for that page
+ *     - null → explicitly no background for that page
+ *     - absent → falls back to defaultImage
+ */
+export interface PageBackground {
+  defaultImage?: string;
+  overrides?: Record<number, string | null>;
+}
+
 // Page dimensions and padding configuration
 export interface PageConfig {
   /** Page width in px (default: 794 — A4 at 96dpi) */
@@ -229,6 +248,23 @@ export interface CommentUser {
   avatar?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Document Metadata (typed input for initialMeta)
+// ---------------------------------------------------------------------------
+
+export interface DocumentMetaInput {
+  /** Default font family for the document */
+  documentFont?: string;
+  /** Default font size (pt) for the document */
+  documentFontSize?: number;
+  /** Page background images */
+  pageBackground?: PageBackground;
+  /** Section navigation metadata (custom labels, hidden sections) */
+  sectionNav?: Record<string, unknown>;
+  /** Allow additional metadata keys */
+  [key: string]: unknown;
+}
+
 // Props do Editor principal (para reutilização)
 export interface NotionEditorProps {
   initialBlocks?: BlockData[];
@@ -251,8 +287,8 @@ export interface NotionEditorProps {
   collaborationConfig?: VersionHistoryCollabConfig;
   /** Read-only mode: disables editing, drag, slash menu, toolbar. Used by version history. */
   readOnly?: boolean;
-  /** Initial document metadata (font, fontSize, etc.) — used when no dataSource is provided */
-  initialMeta?: Record<string, unknown>;
+  /** Initial document metadata (font, fontSize, pageBackground, etc.) */
+  initialMeta?: DocumentMetaInput;
   /** Current user info for comments authorship */
   commentUser?: CommentUser;
   /** Called when comment threads change */

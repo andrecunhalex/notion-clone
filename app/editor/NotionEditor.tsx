@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig, VersionHistoryCollabConfig, CommentUser, CommentThread } from './types';
+import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig, VersionHistoryCollabConfig, CommentUser, CommentThread, PageBackground } from './types';
 import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty, resolvePageConfig, getContentHeight } from './utils';
 import {
   useBlockManager,
@@ -40,7 +40,8 @@ const NotionEditorInner: React.FC<{
   readOnly?: boolean;
   commentUser?: CommentUser;
   onCommentsChange?: (threads: CommentThread[]) => void;
-}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus, onSaveNow, collaborationConfig, readOnly, commentUser, onCommentsChange }) => {
+  initialMeta?: Record<string, unknown>;
+}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus, onSaveNow, collaborationConfig, readOnly, commentUser, onCommentsChange, initialMeta }) => {
   const { blocks, setBlocks: setBlocksRaw, undo: undoRaw, redo: redoRaw, canUndo, canRedo, meta, setMeta } = dataSource;
 
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
@@ -60,6 +61,11 @@ const NotionEditorInner: React.FC<{
   const setDocumentFontSize = useCallback((size: number) => {
     setMeta({ documentFontSize: size });
   }, [setMeta]);
+  // Page background images (meta takes priority, initialMeta as fallback)
+  const pageBackground = (meta.pageBackground as PageBackground)
+    || (initialMeta?.pageBackground as PageBackground)
+    || undefined;
+
   // Section nav metadata (custom labels, hidden sections)
   const sectionNavMeta = (meta.sectionNav as SectionNavMeta) || {};
   const setSectionNavMeta = useCallback((navMeta: SectionNavMeta) => {
@@ -809,12 +815,26 @@ const NotionEditorInner: React.FC<{
               </>
             );
 
+            // Resolve background image for this page
+            const pageBgImage = pageBackground
+              ? (pageBackground.overrides?.[pageIndex] !== undefined
+                  ? pageBackground.overrides[pageIndex]  // explicit override (string | null)
+                  : pageBackground.defaultImage)          // fallback to default
+              : undefined;
+
+            const pageBgStyle = pageBgImage ? {
+              backgroundImage: `url(${pageBgImage})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+            } : undefined;
+
             return (
               <div
                 key={renderIndex}
                 data-page-index={pageIndex}
-                className={viewMode === 'paginated' ? 'bg-white shadow-lg overflow-hidden' : ''}
-                style={paginatedStyle}
+                className={viewMode === 'paginated' ? `${pageBgImage ? '' : 'bg-white'} shadow-lg overflow-hidden` : ''}
+                style={{ ...paginatedStyle, ...pageBgStyle }}
                 onClick={e => handlePageClick(e, pageBlocks)}
               >
                 {pageContent}
@@ -939,6 +959,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           readOnly={readOnly}
           commentUser={commentUser}
           onCommentsChange={onCommentsChange}
+          initialMeta={initialMeta}
         />
       </EditorProvider>
     </FontLoader>

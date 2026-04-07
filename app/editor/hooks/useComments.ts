@@ -77,22 +77,22 @@ export const useComments = ({ enabled, user, collabConfig, onChange }: UseCommen
 
   // --- Supabase helpers ---
 
-  const getClient = useCallback(() => {
-    if (!collabConfig) return null;
-    return getSupabaseClient(collabConfig.supabaseUrl, collabConfig.supabaseAnonKey);
-  }, [collabConfig]);
-
+  const supabaseUrl = collabConfig?.supabaseUrl;
+  const supabaseAnonKey = collabConfig?.supabaseAnonKey;
   const docId = collabConfig?.documentId;
 
-  // --- Load comments from Supabase on mount ---
+  const getClient = useCallback(() => {
+    if (!supabaseUrl || !supabaseAnonKey) return null;
+    return getSupabaseClient(supabaseUrl, supabaseAnonKey);
+  }, [supabaseUrl, supabaseAnonKey]);
 
   useEffect(() => {
-    if (!enabled || !collabConfig) return;
-    const supabase = getSupabaseClient(collabConfig.supabaseUrl, collabConfig.supabaseAnonKey);
+    if (!enabled || !supabaseUrl || !supabaseAnonKey || !docId) return;
+    const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
     supabase
       .from('document_comments')
       .select('*')
-      .eq('document_id', collabConfig.documentId)
+      .eq('document_id', docId)
       .order('created_at', { ascending: true })
       .then(({ data, error }) => {
         if (error) {
@@ -104,7 +104,7 @@ export const useComments = ({ enabled, user, collabConfig, onChange }: UseCommen
         setThreads(loaded);
         onChangeRef.current?.(loaded);
       });
-  }, [enabled, collabConfig]);
+  }, [enabled, supabaseUrl, supabaseAnonKey, docId]);
 
   // --- User helper ---
 

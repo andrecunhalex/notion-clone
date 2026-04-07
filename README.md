@@ -34,6 +34,21 @@ Editor de documentos colaborativo estilo Notion, construido com Next.js, React, 
 - Responsivo: tabs no mobile, side-by-side no desktop, sidebar em telas xl
 - Feature toggle: `enableVersionHistory` no config (pode ser premium)
 
+### Comentarios
+- Selecione texto e clique no icone de comentario na toolbar flutuante
+- Threads com respostas, resolver e excluir
+- Highlight amarelo no texto comentado
+- Desktop: card flutuante ao lado da pagina
+- Mobile: bottom sheet
+- Persistencia no Supabase (tabela `document_comments`)
+- Feature toggle: `enableComments` no config (pode ser premium)
+
+### Imagem de fundo nas paginas
+- Imagem padrao aplicada a todas as paginas
+- Overrides por pagina (imagem especifica ou sem imagem)
+- Configurado via `initialMeta.pageBackground`
+- Renderizado com CSS puro (`background-image: cover`) — zero JS
+
 ### Modo somente leitura
 - Prop `readOnly` no NotionEditor
 - Bloqueia todas as mutacoes no nivel da logica (`setBlocks` vira no-op)
@@ -71,6 +86,7 @@ supabase/001_documents.sql          -- Tabela de documentos (estado Yjs)
 supabase/002_storage_images.sql     -- Storage para imagens
 supabase/003_rls_documents.sql      -- RLS para documentos
 supabase/004_document_versions.sql  -- Tabela + RLS para historico de versoes
+supabase/005_document_comments.sql  -- Tabela + RLS para comentarios
 ```
 
 ### Desenvolvimento
@@ -100,6 +116,7 @@ app/
       useBlockManager.ts       -- CRUD de blocos
       usePagination.ts         -- Paginacao A4 com medicao DOM
       useVersionHistory.ts     -- Sessao + fetch + estado do historico
+      useComments.ts           -- Comentarios (threads, persist Supabase)
       useKeyboardShortcuts.ts  -- Atalhos de teclado
       useSectionNav.ts         -- Navegacao por secoes
     collaboration/
@@ -112,12 +129,13 @@ supabase/
   002_storage_images.sql
   003_rls_documents.sql
   004_document_versions.sql
+  005_document_comments.sql
 ```
 
 ## Seguranca
 
 ### Estado atual
-- RLS habilitado nas tabelas `documents` e `document_versions` com politicas permissivas (`allow_all_for_now`)
+- RLS habilitado nas tabelas `documents`, `document_versions` e `document_comments` com politicas permissivas (`allow_all_for_now`)
 - Modo readOnly bloqueia mutacoes no frontend (logica + CSS)
 
 ### Para producao com compartilhamento
@@ -152,10 +170,40 @@ Para usuarios com permissao somente leitura (viewer):
 | `config` | `EditorConfig` | Configuracao (pagina, fontes, zoom, etc.) |
 | `readOnly` | `boolean` | Modo somente leitura |
 | `collaborationConfig` | `VersionHistoryCollabConfig` | Config Supabase para historico |
-| `initialMeta` | `Record<string, unknown>` | Metadados iniciais (fonte, tamanho) |
+| `initialMeta` | `DocumentMetaInput` | Metadados iniciais (fonte, tamanho, pageBackground) |
+| `commentUser` | `CommentUser` | Usuario autor dos comentarios |
+| `onCommentsChange` | `(threads) => void` | Callback quando comentarios mudam |
 | `onChange` | `(blocks) => void` | Callback de mudancas |
 | `onSaveNow` | `() => Promise<void>` | Save manual (Ctrl+S) |
 | `remoteUsers` | `PresenceUser[]` | Usuarios remotos |
 | `syncStatus` | `SyncStatus` | Status de sincronizacao |
 | `defaultViewMode` | `'paginated' \| 'continuous'` | Modo de visualizacao |
 | `title` | `string` | Titulo na toolbar |
+
+## Imagem de fundo nas paginas
+
+Configurada via `initialMeta.pageBackground`:
+
+```tsx
+<NotionEditor
+  initialMeta={{
+    pageBackground: {
+      // Imagem padrao para todas as paginas
+      defaultImage: 'https://example.com/fundo.png',
+      // Overrides por pagina (0-based)
+      overrides: {
+        0: 'https://example.com/capa.png',  // pagina 1: imagem da capa
+        3: null,                              // pagina 4: sem imagem
+        // demais paginas: usa defaultImage
+      },
+    },
+  }}
+/>
+```
+
+| Cenario | Configuracao |
+|---------|-------------|
+| Todas as paginas com mesmo fundo | `{ defaultImage: 'url' }` |
+| So a capa tem imagem | `{ overrides: { 0: 'url' } }` |
+| Todas exceto pagina 2 | `{ defaultImage: 'url', overrides: { 1: null } }` |
+| Paginas 1, 2, 3 diferentes | `{ overrides: { 0: 'urlA', 1: 'urlB', 2: 'urlC' } }` |

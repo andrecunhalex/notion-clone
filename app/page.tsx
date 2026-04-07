@@ -36,6 +36,11 @@ export default function Home() {
       defaultViewMode="paginated"
       config={{ enableComments: true }}
       commentUser={{ id: sessionUserId, name: `User ${sessionUserId.slice(0, 4)}` }}
+      initialMeta={{
+        pageBackground: {
+          defaultImage: 'https://yiqxeiqsfmbiwycfjxaq.supabase.co/storage/v1/object/public/images/uploads/1761055623347_CapaDemo.png',
+        },
+      }}
       onChange={(blocks) => {
         console.log('Blocos atualizados:', blocks.length);
       }}
@@ -78,6 +83,14 @@ function CollaborativeEditor() {
           user: { id: sessionUserId, name: `User ${sessionUserId.slice(0, 4)}`, color: randomColor },
         }}
         commentUser={{ id: sessionUserId, name: `User ${sessionUserId.slice(0, 4)}` }}
+        initialMeta={{
+          pageBackground: {
+            defaultImage: 'https://lexstudio.ai/A4_Lex_1.svg',
+            overrides: {
+              1: null
+            }
+          },
+        }}
         config={{
           uploadImage: handleUploadImage,
           enableVersionHistory: true,
