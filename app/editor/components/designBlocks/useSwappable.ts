@@ -24,6 +24,14 @@ export function useSwappable({ containerRef, saveValues, uploadImage }: UseSwapp
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [iconPickerPos, setIconPickerPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  /** Convert viewport coords to absolute coords within the scroll container */
+  const toAbsolute = useCallback((vx: number, vy: number): { x: number; y: number } => {
+    const scrollEl = containerRef.current?.closest('.overflow-y-auto') as HTMLElement | null;
+    if (!scrollEl) return { x: vx, y: vy };
+    const sr = scrollEl.getBoundingClientRect();
+    return { x: vx - sr.left + scrollEl.scrollLeft, y: vy - sr.top + scrollEl.scrollTop };
+  }, [containerRef]);
+
   // --- Attach hover + click listeners to swappable elements ---
   const attachSwapListeners = useCallback((container: HTMLElement) => {
     container.querySelectorAll<HTMLElement>('[data-swappable]').forEach(el => {
@@ -42,7 +50,7 @@ export function useSwappable({ containerRef, saveValues, uploadImage }: UseSwapp
         activeSwapKey.current = el.getAttribute('data-swappable');
         activeSwapEl.current = el;
         const rect = el.getBoundingClientRect();
-        setSwapPopover({ x: rect.left + rect.width / 2, y: rect.bottom + 6 });
+        setSwapPopover(toAbsolute(rect.left + rect.width / 2, rect.bottom + 6));
       });
     });
   }, []);
@@ -52,29 +60,23 @@ export function useSwappable({ containerRef, saveValues, uploadImage }: UseSwapp
     const el = activeSwapEl.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    setIconPickerPos({ x: rect.left + rect.width / 2, y: rect.bottom + 6 });
-  }, []);
+    setIconPickerPos(toAbsolute(rect.left + rect.width / 2, rect.bottom + 6));
+  }, [toAbsolute]);
 
-  // --- Close popover on click outside / scroll; reposition icon picker on scroll ---
+  // --- Close popover on click outside ---
   useEffect(() => {
-    if (!swapPopover && !iconPickerOpen) return;
+    if (!swapPopover) return;
     const handleClick = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (swapPopover && popoverRef.current && !popoverRef.current.contains(target)) {
+      if (popoverRef.current && !popoverRef.current.contains(target)) {
         setSwapPopover(null);
       }
     };
-    const handleScroll = () => {
-      if (swapPopover) setSwapPopover(null);
-      if (iconPickerOpen) updateIconPickerPos();
-    };
     document.addEventListener('mousedown', handleClick);
-    window.addEventListener('scroll', handleScroll, true);
     return () => {
       document.removeEventListener('mousedown', handleClick);
-      window.removeEventListener('scroll', handleScroll, true);
     };
-  }, [swapPopover, iconPickerOpen, updateIconPickerPos]);
+  }, [swapPopover]);
 
   // --- Update the DOM image immediately after a value change ---
   const updateSwapImage = useCallback((key: string, src: string) => {
@@ -135,6 +137,11 @@ export function useSwappable({ containerRef, saveValues, uploadImage }: UseSwapp
     fileInputRef.current?.click();
   }, []);
 
+  /** The scroll container element to portal into (for absolute positioning) */
+  const getPortalTarget = useCallback((): HTMLElement => {
+    return (containerRef.current?.closest('.overflow-y-auto') as HTMLElement) || document.body;
+  }, [containerRef]);
+
   return {
     fileInputRef,
     popoverRef,
@@ -147,5 +154,6 @@ export function useSwappable({ containerRef, saveValues, uploadImage }: UseSwapp
     handleCloseIconPicker,
     openIconPicker,
     openFileInput,
+    getPortalTarget,
   };
 }

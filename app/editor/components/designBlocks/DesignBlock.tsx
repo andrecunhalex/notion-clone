@@ -277,11 +277,11 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
         onChange={swap.handleFileChange}
       />
 
-      {/* Swap choice popover (portal to body to avoid transform issues) */}
+      {/* Swap choice popover (portal to scroll container for absolute positioning) */}
       {swap.swapPopover && createPortal(
         <div
           ref={swap.popoverRef}
-          className="fixed z-9999 bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-44"
+          className="absolute z-9999 bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-44"
           style={{
             left: swap.swapPopover.x,
             top: swap.swapPopover.y,
@@ -304,13 +304,13 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
             Enviar imagem
           </button>
         </div>,
-        document.body,
+        swap.getPortalTarget(),
       )}
 
-      {/* Icon picker floating panel (portal to body) */}
+      {/* Icon picker floating panel (portal to scroll container) */}
       {swap.iconPickerOpen && createPortal(
         <div
-          className="fixed z-9999"
+          className="absolute z-9999"
           style={{
             left: swap.iconPickerPos.x,
             top: swap.iconPickerPos.y,
@@ -322,7 +322,7 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
             onClose={swap.handleCloseIconPicker}
           />
         </div>,
-        document.body,
+        swap.getPortalTarget(),
       )}
     </div>
   );
