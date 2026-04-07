@@ -10,3 +10,4 @@ export { FontLoader } from './FontLoader';
 export { SectionNav } from './SectionNav';
 export { SectionNavPanel } from './SectionNavPanel';
 export { SectionTocPage } from './SectionTocPage';
+export { CommentsSidebar } from './CommentsSidebar';

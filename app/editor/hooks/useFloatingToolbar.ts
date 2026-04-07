@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { FontEntry, DEFAULT_FONT_SIZE } from '../fonts';
 import { BlockData, TextAlign } from '../types';
 import { isMac } from '../constants';
@@ -10,9 +10,11 @@ interface UseFloatingToolbarProps {
   blocks?: BlockData[];
   updateBlock?: (id: string, updates: Partial<BlockData>) => void;
   allFonts: FontEntry[];
+  /** Scroll container ref — when provided, positions are absolute within it (no scroll recalc) */
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts }: UseFloatingToolbarProps) => {
+export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts, scrollRef }: UseFloatingToolbarProps) => {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState({ left: 0, top: 0 });
@@ -57,6 +59,16 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
   const savedRange = useRef<Range | null>(null);
   const inputSubmenuOpenRef = useRef(false);
   inputSubmenuOpenRef.current = linkOpen || refOpen || sizeOpen;
+
+  // --- Viewport ↔ Absolute conversion ---
+
+  /** Convert viewport-relative position to scroll-container-absolute position */
+  const toAbsolute = useCallback((left: number, top: number): { left: number; top: number } => {
+    const scrollEl = scrollRef?.current;
+    if (!scrollEl) return { left, top }; // fallback to fixed-like
+    const sr = scrollEl.getBoundingClientRect();
+    return { left: left - sr.left + scrollEl.scrollLeft, top: top - sr.top + scrollEl.scrollTop };
+  }, [scrollRef]);
 
   // --- Helpers ---
 
@@ -220,8 +232,8 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     if (left + toolbarRect.width > vw - 4) left = vw - toolbarRect.width - 4;
     if (top + toolbarRect.height > vh - 4) top = vh - toolbarRect.height - 4;
 
-    setPosition({ left, top });
-  }, []);
+    setPosition(toAbsolute(left, top));
+  }, [toAbsolute]);
 
   // Position toolbar after visibility change
   useLayoutEffect(() => {
@@ -242,8 +254,8 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     if (left + toolbarRect.width > vw - 4) left = vw - toolbarRect.width - 4;
     if (top + toolbarRect.height > vh - 4) top = vh - toolbarRect.height - 4;
 
-    setPosition({ left, top });
-  }, [visible, activeFormats]);
+    setPosition(toAbsolute(left, top));
+  }, [visible, activeFormats, toAbsolute]);
 
   // Listen for selection changes
   useEffect(() => {
@@ -263,14 +275,9 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     };
   }, [updatePosition]);
 
-  // Reposition on scroll + close menus on click outside
+  // Close menus on click outside
   useEffect(() => {
     if (!visible) return;
-
-    const onScroll = () => {
-      if (inputSubmenuOpenRef.current) repositionFromSavedRange();
-      else updatePosition();
-    };
 
     const onMouseDown = (e: MouseEvent) => {
       const target = e.target as Node;
@@ -286,13 +293,11 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
       setFontOpen(false); setWeightOpen(false); setSizeOpen(false); setAlignOpen(false);
     };
 
-    window.addEventListener('scroll', onScroll, true);
     document.addEventListener('mousedown', onMouseDown, true);
     return () => {
-      window.removeEventListener('scroll', onScroll, true);
       document.removeEventListener('mousedown', onMouseDown, true);
     };
-  }, [visible, updatePosition, repositionFromSavedRange]);
+  }, [visible]);
 
   // Close submenus when toolbar hides
   useEffect(() => {
@@ -320,8 +325,8 @@ export const useFloatingToolbar = ({ documentFont, blocks, updateBlock, allFonts
     if (top + menuRect.height > vh - 4) top = toolbarRect.top - menuRect.height - 4;
     if (left + menuRect.width > vw - 4) left = vw - menuRect.width - 4;
     if (left < 4) left = 4;
-    setPos({ left, top });
-  }, []);
+    setPos(toAbsolute(left, top));
+  }, [toAbsolute]);
 
   // Single consolidated effect for all submenu positioning
   useLayoutEffect(() => {

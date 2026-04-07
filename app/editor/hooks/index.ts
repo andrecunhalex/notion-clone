@@ -10,3 +10,4 @@ export { usePagination } from './usePagination';
 export { useTableBlock } from './useTableBlock';
 export { useFloatingToolbar } from './useFloatingToolbar';
 export { useSectionNav } from './useSectionNav';
+export { useComments } from './useComments';

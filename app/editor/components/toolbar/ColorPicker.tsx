@@ -18,7 +18,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
 }) => (
   <div
     ref={menuRef}
-    className="fixed z-51 bg-white shadow-xl border border-gray-200 rounded-lg p-3 w-55"
+    className="absolute z-51 bg-white shadow-xl border border-gray-200 rounded-lg p-3 w-55"
     style={{
       left: menuPos?.left ?? 0,
       top: menuPos?.top ?? 0,

@@ -5,7 +5,7 @@ import {
   Bold, Italic, Underline, Strikethrough,
   Link, Palette, Type, ChevronDown,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  BookmarkIcon,
+  BookmarkIcon, MessageSquarePlus,
 } from 'lucide-react';
 import { WEIGHT_LABELS } from '../fonts';
 import { BlockData } from '../types';
@@ -42,12 +42,14 @@ interface FloatingToolbarProps {
   documentFont?: string;
   blocks?: BlockData[];
   updateBlock?: (id: string, updates: Partial<BlockData>) => void;
+  onAddComment?: (blockId: string, selectedText: string, range: Range) => void;
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, blocks, updateBlock }) => {
+export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, blocks, updateBlock, onAddComment, scrollRef }) => {
   const { allFonts, customFonts } = useFonts();
 
-  const toolbar = useFloatingToolbar({ documentFont, blocks, updateBlock, allFonts });
+  const toolbar = useFloatingToolbar({ documentFont, blocks, updateBlock, allFonts, scrollRef });
 
   const currentFontEntry = allFonts.find(f => f.family === toolbar.currentFont);
   const availableWeights = currentFontEntry?.availableWeights;
@@ -60,7 +62,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
       {/* Main toolbar */}
       <div
         ref={toolbar.toolbarRef}
-        className="fixed z-50 bg-white shadow-lg border border-gray-200 rounded-lg p-1 flex items-center gap-0.5"
+        className="absolute z-50 bg-white shadow-lg border border-gray-200 rounded-lg p-1 flex items-center gap-0.5"
         style={{ left: toolbar.position.left, top: toolbar.position.top }}
         onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
       >
@@ -195,6 +197,31 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
               <BookmarkIcon size={16} />
             </button>
           </Tooltip>
+        )}
+
+        {/* Comment button */}
+        {onAddComment && (
+          <>
+            <div className="w-px h-5 bg-gray-200 mx-0.5" />
+            <Tooltip label="Comentar" shortcut="">
+              <button
+                className="p-1.5 rounded hover:bg-gray-100 transition-colors text-gray-600"
+                onClick={() => {
+                  toolbar.restoreSelection();
+                  const sel = window.getSelection();
+                  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+                  const blockId = toolbar.getSelectedBlockId();
+                  if (!blockId) return;
+                  const text = sel.toString().trim();
+                  if (!text) return;
+                  const range = sel.getRangeAt(0).cloneRange();
+                  onAddComment(blockId, text, range);
+                }}
+              >
+                <MessageSquarePlus size={16} />
+              </button>
+            </Tooltip>
+          </>
         )}
       </div>
 

@@ -20,7 +20,7 @@ export const RefPicker: React.FC<RefPickerProps> = ({
 }) => (
   <div
     ref={menuRef}
-    className="fixed z-51 bg-white shadow-xl border border-gray-200 rounded-lg p-2 w-70 max-h-75 flex flex-col"
+    className="absolute z-51 bg-white shadow-xl border border-gray-200 rounded-lg p-2 w-70 max-h-75 flex flex-col"
     style={{
       left: menuPos?.left ?? 0,
       top: menuPos?.top ?? 0,

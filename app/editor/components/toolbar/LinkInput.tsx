@@ -20,7 +20,7 @@ export const LinkInput: React.FC<LinkInputProps> = ({
 }) => (
   <div
     ref={menuRef}
-    className="fixed z-51 bg-white shadow-xl border border-gray-200 rounded-lg p-3 w-75"
+    className="absolute z-51 bg-white shadow-xl border border-gray-200 rounded-lg p-3 w-75"
     style={{
       left: menuPos?.left ?? 0,
       top: menuPos?.top ?? 0,

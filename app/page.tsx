@@ -35,6 +35,8 @@ export default function Home() {
     <NotionEditor
       title="MiniNotion"
       defaultViewMode="paginated"
+      config={{ enableComments: true }}
+      commentUser={{ id: sessionUserId, name: `User ${sessionUserId.slice(0, 4)}` }}
       onChange={(blocks) => {
         console.log('Blocos atualizados:', blocks.length);
       }}
@@ -77,9 +79,11 @@ function CollaborativeEditor() {
           documentId: DOC_ID,
           user: { id: sessionUserId, name: `User ${sessionUserId.slice(0, 4)}`, color: randomColor },
         }}
+        commentUser={{ id: sessionUserId, name: `User ${sessionUserId.slice(0, 4)}` }}
         config={{
           uploadImage: handleUploadImage,
           enableVersionHistory: true,
+          enableComments: true,
           sectionNav: {
             position: 'header',
             pages: 'all',

@@ -169,6 +169,8 @@ export interface EditorConfig {
   sectionNav?: SectionNavConfig;
   /** Enable version history feature (requires collaborationConfig). Can be toggled as premium feature. */
   enableVersionHistory?: boolean;
+  /** Enable comments feature. Can be toggled as premium feature. */
+  enableComments?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +197,38 @@ export interface DocumentVersion {
   created_at: string;
 }
 
+// ---------------------------------------------------------------------------
+// Comments
+// ---------------------------------------------------------------------------
+
+/** A single comment (or reply) within a thread */
+export interface CommentEntry {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string;
+  text: string;
+  createdAt: string;
+}
+
+/** A comment thread anchored to a text range in a block */
+export interface CommentThread {
+  id: string;
+  blockId: string;
+  /** The highlighted text that was selected when the comment was created */
+  selectedText: string;
+  comments: CommentEntry[];
+  resolved: boolean;
+  createdAt: string;
+}
+
+/** User info for comment authorship */
+export interface CommentUser {
+  id: string;
+  name: string;
+  avatar?: string;
+}
+
 // Props do Editor principal (para reutilização)
 export interface NotionEditorProps {
   initialBlocks?: BlockData[];
@@ -219,4 +253,8 @@ export interface NotionEditorProps {
   readOnly?: boolean;
   /** Initial document metadata (font, fontSize, etc.) — used when no dataSource is provided */
   initialMeta?: Record<string, unknown>;
+  /** Current user info for comments authorship */
+  commentUser?: CommentUser;
+  /** Called when comment threads change */
+  onCommentsChange?: (threads: CommentThread[]) => void;
 }

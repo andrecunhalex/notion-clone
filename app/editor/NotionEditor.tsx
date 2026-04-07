@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig, VersionHistoryCollabConfig } from './types';
+import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig, VersionHistoryCollabConfig, CommentUser, CommentThread } from './types';
 import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty, resolvePageConfig, getContentHeight } from './utils';
 import {
   useBlockManager,
@@ -11,8 +11,9 @@ import {
   useKeyboardShortcuts,
   usePagination,
   useSectionNav,
+  useComments,
 } from './hooks';
-import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar, SectionNav, SectionTocPage } from './components';
+import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar, SectionNav, SectionTocPage, CommentsSidebar } from './components';
 import { SectionNavPanel } from './components/SectionNavPanel';
 import { VersionHistoryOverlay } from './components/VersionHistory';
 import type { SectionNavMeta } from './hooks/useSectionNav';
@@ -36,7 +37,9 @@ const NotionEditorInner: React.FC<{
   onSaveNow?: () => Promise<void>;
   collaborationConfig?: VersionHistoryCollabConfig;
   readOnly?: boolean;
-}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus, onSaveNow, collaborationConfig, readOnly }) => {
+  commentUser?: CommentUser;
+  onCommentsChange?: (threads: CommentThread[]) => void;
+}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus, onSaveNow, collaborationConfig, readOnly, commentUser, onCommentsChange }) => {
   const { blocks, setBlocks: setBlocksRaw, undo: undoRaw, redo: redoRaw, canUndo, canRedo, meta, setMeta } = dataSource;
 
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
@@ -85,6 +88,18 @@ const NotionEditorInner: React.FC<{
     currentBlocks: blocks,
     currentMeta: meta,
     syncStatus,
+  });
+
+  // Comments
+  const comments = useComments({
+    enabled: !!config.enableComments,
+    user: commentUser,
+    collabConfig: collaborationConfig ? {
+      supabaseUrl: collaborationConfig.supabaseUrl,
+      supabaseAnonKey: collaborationConfig.supabaseAnonKey,
+      documentId: collaborationConfig.documentId,
+    } : undefined,
+    onChange: onCommentsChange,
   });
 
   // Section panel: desktop starts open, mobile starts closed
@@ -817,6 +832,20 @@ const NotionEditorInner: React.FC<{
             />
           )}
         </div>
+
+        {!readOnly && !slashMenu.isOpen && (
+          <FloatingToolbar
+            documentFont={documentFont}
+            blocks={blocks}
+            updateBlock={updateBlock}
+            onAddComment={config.enableComments ? comments.startComment : undefined}
+            scrollRef={scrollRef}
+          />
+        )}
+
+        {!readOnly && config.enableComments && (
+          <CommentsSidebar comments={comments} scrollRef={scrollRef} />
+        )}
       </div>
 
       {!readOnly && hasSections && (
@@ -840,8 +869,6 @@ const NotionEditorInner: React.FC<{
           onSelect={handleSlashMenuSelect}
         />
       )}
-
-      {!readOnly && !slashMenu.isOpen && <FloatingToolbar documentFont={documentFont} blocks={blocks} updateBlock={updateBlock} />}
 
       {versionHistory.isOpen && (
         <VersionHistoryOverlay
@@ -872,6 +899,8 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   collaborationConfig,
   readOnly,
   initialMeta,
+  commentUser,
+  onCommentsChange,
 }) => {
   const localDataSource = useLocalDataSource(initialBlocks, config.historyDebounceMs, initialMeta as import('./EditorProvider').DocumentMeta | undefined);
   const noopSetMeta = useCallback(() => {}, []);
@@ -900,6 +929,8 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           onSaveNow={onSaveNow}
           collaborationConfig={collaborationConfig}
           readOnly={readOnly}
+          commentUser={commentUser}
+          onCommentsChange={onCommentsChange}
         />
       </EditorProvider>
     </FontLoader>
