@@ -22,6 +22,7 @@ import { FontLoader } from './components/FontLoader';
 import { SYSTEM_FONTS, DEFAULT_FONT_SIZE } from './fonts';
 import { EditorProvider, EditorDataSource, useLocalDataSource } from './EditorProvider';
 import { useVersionHistory } from './hooks/useVersionHistory';
+import { RemoteCursorsOverlay } from './collaboration/RemoteCursors';
 
 const DEFAULT_BLOCK: BlockData = { id: 'initial-block', type: 'text', content: '' };
 
@@ -845,6 +846,13 @@ const NotionEditorInner: React.FC<{
 
         {!readOnly && config.enableComments && (
           <CommentsSidebar comments={comments} scrollRef={scrollRef} />
+        )}
+
+        {remoteUsers && remoteUsers.length > 0 && (
+          <RemoteCursorsOverlay
+            remoteUsers={remoteUsers as import('./collaboration/types').RemoteUser[]}
+            scrollRef={scrollRef}
+          />
         )}
       </div>
 

@@ -8,7 +8,6 @@ import { RemoteUser, CursorPosition } from './types';
 // ---------------------------------------------------------------------------
 
 function resolveOffset(editableEl: Element, charOffset: number): { node: Node; offset: number } | null {
-  // Skip text nodes inside nested contentEditable elements (corrupted content)
   const walker = document.createTreeWalker(editableEl, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       let parent = node.parentElement;
@@ -28,7 +27,6 @@ function resolveOffset(editableEl: Element, charOffset: number): { node: Node; o
     }
     remaining -= len;
   }
-  // Fallback: end of content
   const lastChild = editableEl.lastChild || editableEl;
   return { node: lastChild, offset: lastChild.nodeType === Node.TEXT_NODE ? (lastChild.textContent?.length || 0) : 0 };
 }
@@ -58,7 +56,6 @@ function getCursorRect(editableEl: Element, offset: number): DOMRect | null {
     range.collapse(true);
     const rects = range.getClientRects();
     if (rects.length > 0) return rects[0];
-    // Fallback for empty elements
     return editableEl.getBoundingClientRect();
   } catch {
     return null;
@@ -66,20 +63,38 @@ function getCursorRect(editableEl: Element, offset: number): DOMRect | null {
 }
 
 // ---------------------------------------------------------------------------
-// RemoteCursorsOverlay — renders all remote users' cursors + selections
+// Convert viewport DOMRect to scroll-container-absolute position
+// ---------------------------------------------------------------------------
+
+interface AbsRect { left: number; top: number; width: number; height: number }
+
+function toAbsolute(rect: DOMRect, scrollEl: HTMLElement): AbsRect {
+  const sr = scrollEl.getBoundingClientRect();
+  return {
+    left: rect.left - sr.left + scrollEl.scrollLeft,
+    top: rect.top - sr.top + scrollEl.scrollTop,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// RemoteCursorsOverlay
 // ---------------------------------------------------------------------------
 
 interface RemoteCursorsOverlayProps {
   remoteUsers: RemoteUser[];
+  /** Scroll container — cursors use absolute positioning inside it */
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-export const RemoteCursorsOverlay: React.FC<RemoteCursorsOverlayProps> = memo(({ remoteUsers }) => {
+export const RemoteCursorsOverlay: React.FC<RemoteCursorsOverlayProps> = memo(({ remoteUsers, scrollRef }) => {
   if (remoteUsers.length === 0) return null;
 
   return (
     <>
       {remoteUsers.map(user => (
-        <RemoteUserCursor key={user.id} user={user} />
+        <RemoteUserCursor key={user.id} user={user} scrollRef={scrollRef} />
       ))}
     </>
   );
@@ -88,29 +103,32 @@ export const RemoteCursorsOverlay: React.FC<RemoteCursorsOverlayProps> = memo(({
 RemoteCursorsOverlay.displayName = 'RemoteCursorsOverlay';
 
 // ---------------------------------------------------------------------------
-// Single remote user's cursor + selection
+// Single remote user cursor + selection (absolute positioned overlay)
 // ---------------------------------------------------------------------------
 
 interface CursorVisuals {
-  cursorRect: DOMRect | null;
-  selectionRects: DOMRect[];
+  cursorPos: AbsRect | null;
+  selectionRects: AbsRect[];
 }
 
-const RemoteUserCursor: React.FC<{ user: RemoteUser }> = memo(({ user }) => {
-  const [visuals, setVisuals] = useState<CursorVisuals>({ cursorRect: null, selectionRects: [] });
-  const rafRef = useRef(0);
-  const prevCursorRef = useRef<CursorPosition | null>(null);
+const EMPTY_VISUALS: CursorVisuals = { cursorPos: null, selectionRects: [] };
+
+const RemoteUserCursor: React.FC<{
+  user: RemoteUser;
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
+}> = memo(({ user, scrollRef }) => {
+  const [visuals, setVisuals] = useState<CursorVisuals>(EMPTY_VISUALS);
+  const prevCursorRef = useRef<string | null>(null);
 
   const computeVisuals = useCallback(() => {
     const cursor = user.cursor;
-    if (!cursor) {
-      setVisuals({ cursorRect: null, selectionRects: [] });
+    const scrollEl = scrollRef?.current;
+    if (!cursor || !scrollEl) {
+      setVisuals(EMPTY_VISUALS);
       return;
     }
 
-    // Use data-block-id wrapper to find the correct editable element
     const wrapper = document.querySelector(`[data-block-id="${cursor.blockId}"]`);
-    // Standard block, or specific design block zone via editableKey
     const editableEl = (
       wrapper?.querySelector(`#editable-${cursor.blockId}`) ||
       (cursor.editableKey
@@ -118,69 +136,58 @@ const RemoteUserCursor: React.FC<{ user: RemoteUser }> = memo(({ user }) => {
         : wrapper?.querySelector('[data-editable]'))
     ) as HTMLElement | null;
     if (!editableEl) {
-      setVisuals({ cursorRect: null, selectionRects: [] });
+      setVisuals(EMPTY_VISUALS);
       return;
     }
 
     const isCollapsed = cursor.anchorOffset === cursor.focusOffset;
 
     if (isCollapsed) {
-      // Just a cursor line
       const rect = getCursorRect(editableEl, cursor.anchorOffset);
-      setVisuals({ cursorRect: rect, selectionRects: [] });
+      setVisuals({
+        cursorPos: rect ? toAbsolute(rect, scrollEl) : null,
+        selectionRects: [],
+      });
     } else {
-      // Selection highlight + cursor at focus
       const selRects = getRectsForRange(editableEl, cursor.anchorOffset, cursor.focusOffset);
       const focusRect = getCursorRect(editableEl, cursor.focusOffset);
-      setVisuals({ cursorRect: focusRect, selectionRects: selRects });
+      setVisuals({
+        cursorPos: focusRect ? toAbsolute(focusRect, scrollEl) : null,
+        selectionRects: selRects.map(r => toAbsolute(r, scrollEl)),
+      });
     }
-  }, [user.cursor]);
+  }, [user.cursor, scrollRef]);
 
-  // Recompute when cursor changes
+  // Recompute when cursor position changes
   useEffect(() => {
-    const cursorChanged =
-      JSON.stringify(user.cursor) !== JSON.stringify(prevCursorRef.current);
-    prevCursorRef.current = user.cursor;
-
-    if (cursorChanged) {
-      computeVisuals();
-    }
+    const cursorKey = JSON.stringify(user.cursor);
+    if (cursorKey === prevCursorRef.current) return;
+    prevCursorRef.current = cursorKey;
+    computeVisuals();
   }, [user.cursor, computeVisuals]);
 
-  // Recompute on scroll (positions are fixed, need to track viewport)
+  // Recompute on resize only (absolute positioning handles scroll)
   useEffect(() => {
     if (!user.cursor) return;
-
-    const onScroll = () => {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = requestAnimationFrame(computeVisuals);
-    };
-
-    window.addEventListener('scroll', onScroll, true);
-    // Also recompute on resize
-    window.addEventListener('resize', onScroll);
-
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onScroll);
-    };
+    const onResize = () => computeVisuals();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, [user.cursor, computeVisuals]);
 
-  if (!visuals.cursorRect && visuals.selectionRects.length === 0) return null;
+  if (!visuals.cursorPos && visuals.selectionRects.length === 0) return null;
 
   return (
     <>
       {/* Selection highlight rectangles */}
-      {visuals.selectionRects.map((rect, i) => (
+      {visuals.selectionRects.map((r, i) => (
         <div
           key={`sel-${i}`}
-          className="fixed pointer-events-none z-30"
+          className="absolute pointer-events-none z-30"
           style={{
-            left: rect.left,
-            top: rect.top,
-            width: rect.width,
-            height: rect.height,
+            left: r.left,
+            top: r.top,
+            width: r.width,
+            height: r.height,
             backgroundColor: user.color,
             opacity: 0.2,
             borderRadius: 2,
@@ -189,18 +196,17 @@ const RemoteUserCursor: React.FC<{ user: RemoteUser }> = memo(({ user }) => {
       ))}
 
       {/* Cursor line + name label */}
-      {visuals.cursorRect && (
+      {visuals.cursorPos && (
         <div
-          className="fixed pointer-events-none z-40"
+          className="absolute pointer-events-none z-40"
           style={{
-            left: visuals.cursorRect.left - 1,
-            top: visuals.cursorRect.top,
+            left: visuals.cursorPos.left - 1,
+            top: visuals.cursorPos.top,
             width: 2,
-            height: visuals.cursorRect.height,
+            height: visuals.cursorPos.height,
             backgroundColor: user.color,
           }}
         >
-          {/* Name label */}
           <div
             className="absolute bottom-full left-0 mb-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap select-none"
             style={{ backgroundColor: user.color, color: 'white' }}

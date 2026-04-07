@@ -4,7 +4,6 @@ import { useCallback } from 'react';
 import {
   NotionEditor,
   useCollaborativeEditor,
-  RemoteCursorsOverlay,
 } from './editor';
 import { getSupabaseClient, uploadImage } from './editor/collaboration';
 
@@ -65,7 +64,6 @@ function CollaborativeEditor() {
   }, []);
 
   return (
-    <>
       <NotionEditor
         title="MiniNotion Collab"
         defaultViewMode="paginated"
@@ -103,7 +101,5 @@ function CollaborativeEditor() {
           }
         }}
       />
-      <RemoteCursorsOverlay remoteUsers={remoteUsers} />
-    </>
   );
 }
