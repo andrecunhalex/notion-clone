@@ -9,6 +9,18 @@ import { ImageBlock } from './ImageBlock';
 import { DesignBlock } from './designBlocks';
 import { useBlockKeyboard, findEditable, focusEditable } from '../hooks/useBlockKeyboard';
 
+/** Strip ephemeral comment/pending-comment spans from HTML so they never persist in block state. */
+function stripCommentMarkup(html: string): string {
+  if (!html.includes('data-comment-id') && !html.includes('data-pending-comment')) return html;
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  temp.querySelectorAll('span[data-comment-id], span[data-pending-comment]').forEach(span => {
+    while (span.firstChild) span.parentNode!.insertBefore(span.firstChild, span);
+    span.remove();
+  });
+  return temp.innerHTML;
+}
+
 interface EdgePadding {
   top: number;
   right: number;
@@ -178,7 +190,9 @@ const BlockInner: React.FC<BlockProps> = ({
       }
     }
 
-    if (el.innerHTML !== content) {
+    // Compare ignoring ephemeral comment decoration spans
+    const elClean = stripCommentMarkup(el.innerHTML);
+    if (elClean !== content) {
       const isFocused = document.activeElement === el;
       el.innerHTML = content;
       if (isFocused && content) {
@@ -202,8 +216,9 @@ const BlockInner: React.FC<BlockProps> = ({
     // Guard: ignore input events that bubbled from a nested contentEditable
     if (e.target !== e.currentTarget) return;
     isLocalEditRef.current = true;
-    el.classList.toggle('is-empty', isContentEmpty(el.innerHTML));
-    updateBlock(block.id, { content: el.innerHTML });
+    const clean = stripCommentMarkup(el.innerHTML);
+    el.classList.toggle('is-empty', isContentEmpty(clean));
+    updateBlock(block.id, { content: clean });
   }, [block.id, updateBlock]);
 
   const handleFocus = useCallback(() => {

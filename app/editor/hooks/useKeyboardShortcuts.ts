@@ -90,6 +90,10 @@ export const useKeyboardShortcuts = ({
       // Select All
       if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
         const activeElement = document.activeElement as HTMLElement;
+        const tagName = activeElement?.tagName?.toLowerCase();
+
+        // Don't intercept when focus is on textarea or input — let native select-all work
+        if (tagName === 'textarea' || tagName === 'input') return;
 
         if (activeElement?.isContentEditable) {
           const content = activeElement.textContent || '';

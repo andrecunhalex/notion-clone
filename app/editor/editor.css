@@ -45,3 +45,8 @@ span[data-comment-id]:hover,
 span[data-comment-id].comment-active {
   background-color: rgba(255, 212, 0, 0.5);
 }
+
+span[data-pending-comment] {
+  background-color: rgba(255, 212, 0, 0.3);
+  border-bottom: 2px solid rgba(255, 212, 0, 0.6);
+}

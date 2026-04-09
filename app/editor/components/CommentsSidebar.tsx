@@ -73,6 +73,88 @@ function toAbsolutePos(
 }
 
 // ---------------------------------------------------------------------------
+// Find text inside a DOM element and return a Range around it
+// ---------------------------------------------------------------------------
+
+function findTextInElement(root: HTMLElement, searchText: string): Range | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let accumulated = '';
+  const textNodes: { node: Text; start: number }[] = [];
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    // Skip text inside existing comment spans to avoid double-wrapping
+    if ((node.parentElement as HTMLElement)?.closest?.('span[data-comment-id]')) continue;
+    if ((node.parentElement as HTMLElement)?.closest?.('span[data-pending-comment]')) continue;
+    textNodes.push({ node, start: accumulated.length });
+    accumulated += node.textContent || '';
+  }
+
+  const index = accumulated.indexOf(searchText);
+  if (index === -1) return null;
+
+  const endIndex = index + searchText.length;
+  let startNode: Text | null = null;
+  let startOffset = 0;
+  let endNode: Text | null = null;
+  let endOffset = 0;
+
+  for (const { node, start } of textNodes) {
+    const nodeEnd = start + (node.textContent?.length || 0);
+    if (!startNode && index >= start && index < nodeEnd) {
+      startNode = node;
+      startOffset = index - start;
+    }
+    if (endIndex > start && endIndex <= nodeEnd) {
+      endNode = node;
+      endOffset = endIndex - start;
+      break;
+    }
+  }
+
+  if (!startNode || !endNode) return null;
+
+  const range = document.createRange();
+  range.setStart(startNode, startOffset);
+  range.setEnd(endNode, endOffset);
+  return range;
+}
+
+// ---------------------------------------------------------------------------
+// Unwrap a span, moving its children to its parent
+// ---------------------------------------------------------------------------
+
+function unwrapSpan(span: Element) {
+  const parent = span.parentNode;
+  if (!parent) return;
+  while (span.firstChild) parent.insertBefore(span.firstChild, span);
+  parent.removeChild(span);
+}
+
+// ---------------------------------------------------------------------------
+// Insert a highlight span around a Range (handles cross-element ranges)
+// ---------------------------------------------------------------------------
+
+function insertHighlightSpan(range: Range, attr: string, value: string): boolean {
+  try {
+    const span = document.createElement('span');
+    span.setAttribute(attr, value);
+    range.surroundContents(span);
+    return true;
+  } catch {
+    try {
+      const span = document.createElement('span');
+      span.setAttribute(attr, value);
+      span.appendChild(range.extractContents());
+      range.insertNode(span);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Comment Entry
 // ---------------------------------------------------------------------------
 
@@ -182,6 +264,8 @@ const ThreadContent: React.FC<{
   }, [replyText, thread.id, onReply]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Stop propagation so global editor shortcuts (Ctrl+A, etc.) don't fire
+    e.stopPropagation();
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(); }
     if (e.key === 'Escape') onClose();
   }, [handleReply, onClose]);
@@ -254,53 +338,11 @@ const ThreadContent: React.FC<{
 };
 
 // ---------------------------------------------------------------------------
-// Bubble (collapsed comment indicator) — always absolute in scroll container
+// Layout constants
 // ---------------------------------------------------------------------------
 
 const BUBBLE_WIDTH = 28;
 const CARD_WIDTH = 300;
-
-const CommentBubble: React.FC<{
-  thread: CommentThread;
-  scrollRef: React.RefObject<HTMLDivElement | null>;
-  onActivate: (id: string) => void;
-}> = memo(({ thread, scrollRef, onActivate }) => {
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-
-  const computePos = useCallback(() => {
-    const scrollEl = scrollRef.current;
-    if (!scrollEl) return null;
-    const span = document.querySelector(`span[data-comment-id="${thread.id}"]`);
-    if (!span) return null;
-    const spanRect = span.getBoundingClientRect();
-    const pageDiv = span.closest('[data-page-index]') || span.closest('.max-w-3xl');
-    return toAbsolutePos(spanRect, scrollEl, pageDiv, BUBBLE_WIDTH);
-  }, [thread.id, scrollRef]);
-
-  useLayoutEffect(() => { setPos(computePos()); }, [computePos]);
-
-  useEffect(() => {
-    const onResize = () => setPos(computePos());
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [computePos]);
-
-  if (!pos) return null;
-
-  return (
-    <div
-      className="absolute z-40 cursor-pointer"
-      style={{ top: pos.top, left: pos.left }}
-      onClick={() => onActivate(thread.id)}
-      onMouseDown={e => e.stopPropagation()}
-    >
-      <div className="w-7 h-7 rounded-full bg-yellow-400 shadow-md flex items-center justify-center text-white text-xs font-bold hover:bg-yellow-500 transition-colors">
-        {thread.comments.length}
-      </div>
-    </div>
-  );
-});
-CommentBubble.displayName = 'CommentBubble';
 
 // ---------------------------------------------------------------------------
 // Desktop: expanded card (absolute positioned in scroll container)
@@ -388,9 +430,8 @@ const MobileCommentSheet: React.FC<{
   onDelete: (threadId: string) => void;
   onDeleteComment: (threadId: string, commentId: string) => void;
   onSubmitNew: (blockId: string, selectedText: string, text: string) => string;
-  onThreadCreated: (threadId: string, range: Range) => void;
   currentUserId: string;
-}> = ({ thread, pending, onClose, onReply, onResolve, onDelete, onDeleteComment, onSubmitNew, onThreadCreated, currentUserId }) => {
+}> = ({ thread, pending, onClose, onReply, onResolve, onDelete, onDeleteComment, onSubmitNew, currentUserId }) => {
   const [newText, setNewText] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -402,8 +443,7 @@ const MobileCommentSheet: React.FC<{
     if (!pending) return;
     const trimmed = newText.trim();
     if (!trimmed) return;
-    const threadId = onSubmitNew(pending.blockId, pending.selectedText, trimmed);
-    onThreadCreated(threadId, pending.range);
+    onSubmitNew(pending.blockId, pending.selectedText, trimmed);
     setNewText('');
   };
 
@@ -447,6 +487,7 @@ const MobileCommentSheet: React.FC<{
                   value={newText}
                   onChange={e => setNewText(e.target.value)}
                   onKeyDown={e => {
+                    e.stopPropagation();
                     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmitNew(); }
                     if (e.key === 'Escape') onClose();
                   }}
@@ -484,8 +525,7 @@ const DesktopNewComment: React.FC<{
   scrollRef: React.RefObject<HTMLDivElement | null>;
   onSubmit: (blockId: string, selectedText: string, text: string) => string;
   onCancel: () => void;
-  onThreadCreated: (threadId: string, range: Range) => void;
-}> = ({ pending, scrollRef, onSubmit, onCancel, onThreadCreated }) => {
+}> = ({ pending, scrollRef, onSubmit, onCancel }) => {
   const [text, setText] = useState('');
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -495,15 +535,37 @@ const DesktopNewComment: React.FC<{
     try {
       const scrollEl = scrollRef.current;
       if (!scrollEl) { setPos(null); return; }
-      const rect = pending.range.getBoundingClientRect();
+
+      // Try positioning from the original range
+      let rect = pending.range.getBoundingClientRect();
+      let anchorEl: Element | null = pending.range.startContainer.parentElement;
+
+      // Fallback: if range rect is empty (stale range / off-screen), find the pending highlight or text in block
+      if (rect.width === 0 && rect.height === 0) {
+        const pendingSpan = document.querySelector('span[data-pending-comment]');
+        if (pendingSpan) {
+          rect = pendingSpan.getBoundingClientRect();
+          anchorEl = pendingSpan;
+        } else {
+          const blockEl = document.getElementById(`editable-${pending.blockId}`)
+            || document.querySelector(`[data-block-id="${pending.blockId}"]`);
+          if (blockEl) {
+            const found = findTextInElement(blockEl as HTMLElement, pending.selectedText);
+            if (found) {
+              rect = found.getBoundingClientRect();
+              anchorEl = found.startContainer.parentElement;
+            }
+          }
+        }
+      }
+
       if (rect.width === 0 && rect.height === 0) { setPos(null); return; }
-      const el = pending.range.startContainer.parentElement;
-      const pageDiv = el?.closest('[data-page-index]') || el?.closest('.max-w-3xl');
+      const pageDiv = anchorEl?.closest('[data-page-index]') || anchorEl?.closest('.max-w-3xl');
       setPos(toAbsolutePos(rect, scrollEl, pageDiv || null, CARD_WIDTH));
     } catch { setPos(null); }
-  }, [pending.range, scrollRef]);
+  }, [pending.range, pending.blockId, pending.selectedText, scrollRef]);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 50); }, []);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -517,10 +579,9 @@ const DesktopNewComment: React.FC<{
   const handleSubmit = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    const threadId = onSubmit(pending.blockId, pending.selectedText, trimmed);
-    onThreadCreated(threadId, pending.range);
+    onSubmit(pending.blockId, pending.selectedText, trimmed);
     setText('');
-  }, [text, pending, onSubmit, onThreadCreated]);
+  }, [text, pending, onSubmit]);
 
   if (!pos) return null;
 
@@ -537,6 +598,7 @@ const DesktopNewComment: React.FC<{
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => {
+            e.stopPropagation();
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
             if (e.key === 'Escape') onCancel();
           }}
@@ -581,57 +643,166 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = memo(({ comments,
   const activeThreads = useMemo(() => threads.filter(t => !t.resolved), [threads]);
   const activeThread = activeThreadId ? threads.find(t => t.id === activeThreadId) : undefined;
 
-  const handleThreadCreated = useCallback((threadId: string, range: Range) => {
-    try {
-      const span = document.createElement('span');
-      span.setAttribute('data-comment-id', threadId);
-      range.surroundContents(span);
-      const editable = span.closest('[contenteditable]');
-      if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
-    } catch { /* Range invalidated */ }
-  }, []);
+  // -----------------------------------------------------------------------
+  // Ephemeral decoration system — MutationObserver-based
+  //
+  // Comment highlights are NOT part of block content. They are applied as
+  // ephemeral DOM spans and re-applied whenever the DOM changes (typing,
+  // undo, collaborative sync, block reordering). This means:
+  //  - undo/redo never brings back stale highlights
+  //  - block moves are tracked automatically
+  //  - first-load works as soon as content is in the DOM
+  // -----------------------------------------------------------------------
+
+  const [bubblePositions, setBubblePositions] = useState<Map<string, { top: number; left: number }>>(new Map());
+  const observerRef = useRef<MutationObserver | null>(null);
+  const activeThreadsRef = useRef(activeThreads);
+  activeThreadsRef.current = activeThreads;
+  const pendingRef = useRef(pendingComment);
+  pendingRef.current = pendingComment;
+  const activeIdRef = useRef(activeThreadId);
+  activeIdRef.current = activeThreadId;
+
+  const applyDecorations = useCallback(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+
+    // Pause observer while we mutate the DOM
+    observerRef.current?.disconnect();
+
+    const currentThreads = activeThreadsRef.current;
+    const pending = pendingRef.current;
+    const activeIds = new Set(currentThreads.map(t => t.id));
+
+    // 1. Remove orphaned comment spans (resolved / deleted threads)
+    scrollEl.querySelectorAll('span[data-comment-id]').forEach(span => {
+      const id = span.getAttribute('data-comment-id');
+      if (!id || !activeIds.has(id)) unwrapSpan(span);
+    });
+
+    // 2. Remove pending spans if no pending comment
+    if (!pending) {
+      scrollEl.querySelectorAll('span[data-pending-comment]').forEach(unwrapSpan);
+    }
+
+    // 3. Apply pending comment highlight
+    if (pending && !scrollEl.querySelector('span[data-pending-comment]')) {
+      try {
+        const rect = pending.range.getBoundingClientRect();
+        if (rect.width > 0 || rect.height > 0) {
+          insertHighlightSpan(pending.range, 'data-pending-comment', 'true');
+        } else {
+          const blockEl = document.getElementById(`editable-${pending.blockId}`)
+            || scrollEl.querySelector(`[data-block-id="${pending.blockId}"]`);
+          if (blockEl) {
+            const found = findTextInElement(blockEl as HTMLElement, pending.selectedText);
+            if (found) insertHighlightSpan(found, 'data-pending-comment', 'true');
+          }
+        }
+      } catch { /* best-effort */ }
+    }
+
+    // 4. Apply missing comment highlights + compute bubble positions
+    const newPositions = new Map<string, { top: number; left: number }>();
+    const scrollRect = scrollEl.getBoundingClientRect();
+
+    for (const thread of currentThreads) {
+      let span = scrollEl.querySelector(`span[data-comment-id="${thread.id}"]`);
+
+      if (!span) {
+        const blockEl = document.getElementById(`editable-${thread.blockId}`)
+          || scrollEl.querySelector(`[data-block-id="${thread.blockId}"]`);
+        if (blockEl && (blockEl as HTMLElement).textContent?.trim()) {
+          const range = findTextInElement(blockEl as HTMLElement, thread.selectedText);
+          if (range) {
+            insertHighlightSpan(range, 'data-comment-id', thread.id);
+            span = scrollEl.querySelector(`span[data-comment-id="${thread.id}"]`);
+          }
+        }
+      }
+
+      if (span) {
+        const spanRect = span.getBoundingClientRect();
+        if (spanRect.width > 0 || spanRect.height > 0) {
+          const pageDiv = span.closest('[data-page-index]') || span.closest('.max-w-3xl');
+          newPositions.set(thread.id, toAbsolutePos(spanRect, scrollEl, pageDiv, BUBBLE_WIDTH));
+        }
+
+        // Manage comment-active class
+        span.classList.toggle('comment-active', thread.id === activeIdRef.current);
+      }
+    }
+
+    setBubblePositions(newPositions);
+
+    // Resume observer
+    observerRef.current?.observe(scrollEl, { childList: true, subtree: true, characterData: true });
+  }, [scrollRef]);
+
+  // Apply decorations synchronously after render (before paint)
+  useLayoutEffect(() => {
+    applyDecorations();
+  }, [activeThreads, pendingComment, activeThreadId, applyDecorations]);
+
+  // MutationObserver: re-apply after external DOM changes (typing, undo, sync)
+  useEffect(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+
+    let rafId: number | null = null;
+    const scheduleApply = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => { rafId = null; applyDecorations(); });
+    };
+
+    const observer = new MutationObserver(scheduleApply);
+    observerRef.current = observer;
+    observer.observe(scrollEl, { childList: true, subtree: true, characterData: true });
+
+    window.addEventListener('resize', scheduleApply);
+    return () => {
+      observer.disconnect();
+      observerRef.current = null;
+      window.removeEventListener('resize', scheduleApply);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [scrollRef, applyDecorations]);
 
   // Click on comment highlights → toggle active thread
-  const activeThreadIdRef = useRef(activeThreadId);
-  activeThreadIdRef.current = activeThreadId;
-
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const commentSpan = target.closest('span[data-comment-id]');
       if (commentSpan) {
         const id = commentSpan.getAttribute('data-comment-id');
-        if (id) setActiveThreadId(activeThreadIdRef.current === id ? null : id);
+        if (id) setActiveThreadId(activeIdRef.current === id ? null : id);
       }
     };
     document.addEventListener('click', handler);
     return () => document.removeEventListener('click', handler);
   }, [setActiveThreadId]);
 
-  // Manage comment-active CSS class
-  useEffect(() => {
-    document.querySelectorAll('span.comment-active').forEach(el => el.classList.remove('comment-active'));
-    if (activeThreadId) {
-      document.querySelectorAll(`span[data-comment-id="${activeThreadId}"]`).forEach(el => el.classList.add('comment-active'));
-    }
-    return () => {
-      document.querySelectorAll('span.comment-active').forEach(el => el.classList.remove('comment-active'));
-    };
-  }, [activeThreadId]);
-
   return (
     <>
-      {/* Bubbles — always rendered as absolute in scroll container */}
-      {activeThreads.map(thread => (
-        thread.id !== activeThreadId && (
-          <CommentBubble
+      {/* Bubbles — inline from computed positions */}
+      {activeThreads.map(thread => {
+        if (thread.id === activeThreadId) return null;
+        const pos = bubblePositions.get(thread.id);
+        if (!pos) return null;
+        return (
+          <div
             key={thread.id}
-            thread={thread}
-            scrollRef={scrollRef}
-            onActivate={setActiveThreadId}
-          />
-        )
-      ))}
+            className="absolute z-40 cursor-pointer"
+            style={{ top: pos.top, left: pos.left }}
+            onClick={() => setActiveThreadId(thread.id)}
+            onMouseDown={e => e.stopPropagation()}
+          >
+            <div className="w-7 h-7 rounded-full bg-yellow-400 shadow-md flex items-center justify-center text-white text-xs font-bold hover:bg-yellow-500 transition-colors">
+              {thread.comments.length}
+            </div>
+          </div>
+        );
+      })}
 
       {/* Desktop: absolute positioned cards */}
       {!isMobile && (
@@ -642,7 +813,6 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = memo(({ comments,
               scrollRef={scrollRef}
               onSubmit={addThread}
               onCancel={cancelPendingComment}
-              onThreadCreated={handleThreadCreated}
             />
           )}
           {activeThread && !activeThread.resolved && (
@@ -672,11 +842,19 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = memo(({ comments,
           onDelete={deleteThread}
           onDeleteComment={deleteComment}
           onSubmitNew={addThread}
-          onThreadCreated={handleThreadCreated}
           currentUserId={currentUserId}
         />
       )}
     </>
+  );
+}, (prev, next) => {
+  const a = prev.comments;
+  const b = next.comments;
+  return (
+    a.threads === b.threads &&
+    a.activeThreadId === b.activeThreadId &&
+    a.pendingComment === b.pendingComment &&
+    prev.scrollRef === next.scrollRef
   );
 });
 CommentsSidebar.displayName = 'CommentsSidebar';

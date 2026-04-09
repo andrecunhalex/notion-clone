@@ -242,14 +242,11 @@ export const useComments = ({ enabled, user, collabConfig, onChange }: UseCommen
   }, [createEntry, persistThread]);
 
   const removeHighlight = useCallback((threadId: string) => {
-    const spans = document.querySelectorAll(`span[data-comment-id="${threadId}"]`);
-    spans.forEach(span => {
+    document.querySelectorAll(`span[data-comment-id="${threadId}"]`).forEach(span => {
       const parent = span.parentNode;
       if (parent) {
         while (span.firstChild) parent.insertBefore(span.firstChild, span);
         parent.removeChild(span);
-        const editable = (parent as HTMLElement).closest?.('[contenteditable]') as HTMLElement | null;
-        if (editable) editable.dispatchEvent(new Event('input', { bubbles: true }));
       }
     });
   }, []);
