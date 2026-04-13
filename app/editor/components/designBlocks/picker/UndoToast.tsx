@@ -12,7 +12,7 @@
 // (we want this to be hard to miss; pressing Esc or waiting is enough).
 // ---------------------------------------------------------------------------
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Trash2, Undo2, X } from 'lucide-react';
 
@@ -28,6 +28,14 @@ export const UndoToast: React.FC<UndoToastProps> = ({
 }) => {
   const [remaining, setRemaining] = useState(durationMs);
 
+  // Stable refs so the timer effect doesn't re-mount on every parent render
+  // (which would reset the countdown). The callbacks always read the latest
+  // values via the ref.
+  const onDismissRef = useRef(onDismiss);
+  const onUndoRef = useRef(onUndo);
+  onDismissRef.current = onDismiss;
+  onUndoRef.current = onUndo;
+
   useEffect(() => {
     const start = Date.now();
     const tick = setInterval(() => {
@@ -36,23 +44,23 @@ export const UndoToast: React.FC<UndoToastProps> = ({
       setRemaining(left);
       if (left <= 0) {
         clearInterval(tick);
-        onDismiss();
+        onDismissRef.current();
       }
     }, 100);
     return () => clearInterval(tick);
-  }, [durationMs, onDismiss]);
+  }, [durationMs]);
 
   // Esc dismisses (without undo)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onDismiss();
+        onDismissRef.current();
       }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [onDismiss]);
+  }, []);
 
   const progress = remaining / durationMs;
 
@@ -62,6 +70,11 @@ export const UndoToast: React.FC<UndoToastProps> = ({
       className="fixed bottom-4 right-4 z-[1200] flex items-center gap-3 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-2xl max-w-sm"
       role="status"
       aria-live="polite"
+      // Defense in depth: even though the toast is portaled to body and is
+      // a sibling of the picker modal in React's virtual tree, we explicitly
+      // stop mousedown from bubbling so no parent handler upstream of
+      // DesignBlockPicker can interpret a click here as "click outside".
+      onMouseDown={e => e.stopPropagation()}
     >
       <Trash2 size={16} className="text-red-300 shrink-0" />
       <span className="text-sm flex-1 truncate">{message}</span>

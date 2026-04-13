@@ -75,6 +75,30 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
   const notify = () => { for (const l of listeners) l(); };
   const commit = (next: LibrarySnapshot) => { snapshot = next; notify(); };
 
+  // ----- Late-realtime guard -----
+  // After a local create/update, the realtime channel may deliver an older
+  // DELETE event (or update) for the same id with a few hundred ms of lag.
+  // Without protection, that stale event would clobber the freshly-restored
+  // row and the user would see "Undo" silently fail.
+  //
+  // We track ids that we just touched locally and skip any DELETE realtime
+  // event that arrives within the protection window. INSERT/UPDATE events
+  // are still applied (idempotent — see exists check below).
+  const RECENT_TOUCH_TTL_MS = 10_000;
+  const recentlyTouched = new Map<string, number>();
+  const markTouched = (id: string) => {
+    recentlyTouched.set(id, Date.now() + RECENT_TOUCH_TTL_MS);
+  };
+  const isRecentlyTouched = (id: string): boolean => {
+    const exp = recentlyTouched.get(id);
+    if (exp === undefined) return false;
+    if (Date.now() > exp) {
+      recentlyTouched.delete(id);
+      return false;
+    }
+    return true;
+  };
+
   // --- Initial bootstrap fetch -------------------------------------------
   async function bootstrap() {
     const [{ data: tplRows, error: tplErr }, { data: clauseRows, error: clauseErr }] = await Promise.all([
@@ -103,6 +127,10 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
     const id = newRow?.id ?? oldRow?.id;
     if (!id) return;
     if (event === 'DELETE') {
+      // Skip stale DELETE events for ids the user just locally touched.
+      // Without this, undo immediately gets clobbered by the in-flight
+      // DELETE event from the original delete operation.
+      if (isRecentlyTouched(id)) return;
       commit({ ...snapshot, templates: snapshot.templates.filter(t => t.id !== id) });
       return;
     }
@@ -119,6 +147,7 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
     const id = newRow?.id ?? oldRow?.id;
     if (!id) return;
     if (event === 'DELETE') {
+      if (isRecentlyTouched(id)) return;
       commit({ ...snapshot, clauses: snapshot.clauses.filter(c => c.id !== id) });
       return;
     }
@@ -181,6 +210,7 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
         autonumber: input.autonumber ?? null,
         created_by: userId ?? null,
       };
+      markTouched(id);
       const { data, error } = await client
         .from('design_block_templates')
         .insert(row)
@@ -199,6 +229,7 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
       if (patch.defaults !== undefined) updates.defaults = patch.defaults;
       if (patch.autonumber !== undefined) updates.autonumber = patch.autonumber ?? null;
 
+      markTouched(id);
       const { data, error } = await client
         .from('design_block_templates')
         .update(updates)
@@ -212,6 +243,7 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
     },
 
     async deleteTemplate(id) {
+      markTouched(id);
       const { error } = await client.from('design_block_templates').delete().eq('id', id);
       if (error) throw error;
       commit({ ...snapshot, templates: snapshot.templates.filter(t => t.id !== id) });
@@ -227,6 +259,7 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
         items: input.items,
         created_by: userId ?? null,
       };
+      markTouched(id);
       const { data, error } = await client
         .from('design_clauses')
         .insert(row)
@@ -243,6 +276,7 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
       if (patch.name !== undefined) updates.name = patch.name;
       if (patch.items !== undefined) updates.items = patch.items;
 
+      markTouched(id);
       const { data, error } = await client
         .from('design_clauses')
         .update(updates)
@@ -256,6 +290,7 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
     },
 
     async deleteClause(id) {
+      markTouched(id);
       const { error } = await client.from('design_clauses').delete().eq('id', id);
       if (error) throw error;
       commit({ ...snapshot, clauses: snapshot.clauses.filter(c => c.id !== id) });
