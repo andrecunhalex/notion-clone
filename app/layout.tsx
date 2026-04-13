@@ -13,7 +13,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body className="antialiased">
+      {/* suppressHydrationWarning: browser extensions (Grammarly, ColorZilla,
+          LanguageTool, etc.) often inject attributes like `cz-shortcut-listen`
+          on <body> before React hydrates, which would otherwise produce a
+          spurious mismatch warning on every reload. The actual page content
+          is unaffected — this just silences the noise. */}
+      <body className="antialiased" suppressHydrationWarning>
         {children}
       </body>
     </html>

@@ -10,6 +10,13 @@ export {
 } from './store';
 export { createFallbackLibrary } from './fallbackLibrary';
 export { createSupabaseLibrary } from './supabaseLibrary';
+export {
+  normalize,
+  getTemplateSearchBlob,
+  getClauseSearchBlob,
+  matchesTemplate,
+  matchesClause,
+} from './search';
 export type {
   DesignLibraryInterface,
   DesignLibraryConfig,

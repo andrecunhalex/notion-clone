@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { Type, Heading1, Heading2, Heading3, List, ListOrdered, Table, Minus, ImagePlus, LayoutTemplate, LucideIcon } from 'lucide-react';
 import { BlockType } from '../types';
-import { DesignBlockPicker, PickerResult } from './designBlocks/DesignBlockPicker';
+import { DesignBlockPicker } from './designBlocks/picker';
+import type { PickerResult } from './designBlocks/picker';
 
 interface SlashMenuProps {
   x: number;

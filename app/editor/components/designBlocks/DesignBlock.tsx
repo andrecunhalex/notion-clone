@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Image, Shapes } from 'lucide-react';
 import { BlockData } from '../../types';
@@ -77,7 +77,45 @@ interface DesignBlockProps {
   autoNumber?: string;
 }
 
+/**
+ * Outer guard component. Runs the minimal hooks needed to look up the
+ * template, then either bails out (returns null) or mounts the inner
+ * implementation with `data` + `template` guaranteed non-null.
+ *
+ * This split exists because the inner component runs ~10+ hooks, and the
+ * presence of `template` can flip across renders (e.g. async library
+ * bootstrap finishing after the first render). Without this split, the
+ * early-return-then-hooks pattern would crash with "Rendered more hooks
+ * than during the previous render" the first time the library snapshot
+ * gains a previously-missing template.
+ */
 export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, uploadImage, autoNumber }) => {
+  const data = block.designBlockData;
+  const liveTemplate = useLibraryTemplate(data?.templateId);
+  const template = liveTemplate ?? (data ? getTemplate(data.templateId) : undefined);
+  if (!data || !template) return null;
+  return (
+    <DesignBlockInner
+      block={block}
+      data={data}
+      template={template}
+      updateBlock={updateBlock}
+      uploadImage={uploadImage}
+      autoNumber={autoNumber}
+    />
+  );
+};
+
+interface DesignBlockInnerProps {
+  block: BlockData;
+  data: NonNullable<BlockData['designBlockData']>;
+  template: NonNullable<ReturnType<typeof getTemplate>>;
+  updateBlock: (id: string, updates: Partial<BlockData>) => void;
+  uploadImage?: (file: File) => Promise<string | null>;
+  autoNumber?: string;
+}
+
+const DesignBlockInner: React.FC<DesignBlockInnerProps> = ({ block, data, template, updateBlock, uploadImage, autoNumber }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const isLocalEdit = useRef(false);
   const isBuilt = useRef(false);
@@ -85,21 +123,19 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
   /** Tracks the html signature of the mounted template so we rebuild on edit */
   const mountedTemplateHtml = useRef<string | null>(null);
 
-  // Stable refs to avoid stale closures in DOM event listeners
-  const valuesRef = useRef(block.designBlockData?.values ?? {});
-  const dataRef = useRef(block.designBlockData);
+  // Stable refs to avoid stale closures in DOM event listeners attached
+  // imperatively inside the build effect below. We refresh them in a
+  // useLayoutEffect (synchronous post-commit) so any handler triggered after
+  // the DOM is committed sees the latest values without violating the
+  // "no ref writes during render" lint rule.
+  const valuesRef = useRef(data.values);
+  const dataRef = useRef(data);
   const updateBlockRef = useRef(updateBlock);
-  valuesRef.current = block.designBlockData?.values ?? {};
-  dataRef.current = block.designBlockData;
-  updateBlockRef.current = updateBlock;
-
-  const data = block.designBlockData;
-  // Subscribe to the template in the library store. When the template HTML is
-  // edited, every DesignBlock using it re-renders and the useEffect below
-  // rebuilds the DOM (because template identity changes).
-  const liveTemplate = useLibraryTemplate(data?.templateId);
-  const template = liveTemplate ?? (data ? getTemplate(data.templateId) : undefined);
-  if (!data || !template) return null;
+  useLayoutEffect(() => {
+    valuesRef.current = data.values;
+    dataRef.current = data;
+    updateBlockRef.current = updateBlock;
+  });
 
   const values = data.values;
 
@@ -123,8 +159,24 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
     });
   }, [block.id]);
 
-  // Swappable images/icons hook
-  const swap = useSwappable({ containerRef, saveValues: saveRawValues, uploadImage });
+  // Swappable images/icons hook. Destructured up-front so the JSX below
+  // doesn't access ref-typed properties off the hook object during render
+  // (the lint rule react-hooks/refs flags any property access on an object
+  // that exposes refs in its public shape).
+  const {
+    fileInputRef,
+    popoverRef,
+    swapPopover,
+    iconPickerOpen,
+    iconPickerPos,
+    attachSwapListeners,
+    handleFileChange,
+    handleIconSelect,
+    handleCloseIconPicker,
+    openIconPicker,
+    openFileInput,
+    getPortalTarget,
+  } = useSwappable({ containerRef, saveValues: saveRawValues, uploadImage });
 
   // Keyboard handler for editable zones
   const handleZoneKeyDown = useCallback((e: KeyboardEvent, el: HTMLElement) => {
@@ -231,7 +283,7 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
       });
 
       // Attach swappable listeners (delegated to hook)
-      swap.attachSwapListeners(container);
+      attachSwapListeners(container);
 
       isBuilt.current = true;
       mountedTemplateId.current = data.templateId;
@@ -257,7 +309,7 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
       const num = autoNumber ?? '';
       if (el.textContent !== num) el.textContent = num;
     });
-  }, [data.templateId, JSON.stringify(values), autoNumber, template, saveValues, handleZoneKeyDown, swap.attachSwapListeners]);
+  }, [data.templateId, JSON.stringify(values), autoNumber, template, saveValues, handleZoneKeyDown, attachSwapListeners]);
 
   // Apply text alignment to all editable zones
   useEffect(() => {
@@ -278,59 +330,59 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
     <div className="my-1 relative">
       <div ref={containerRef} className="design-block-container" />
       <input
-        ref={swap.fileInputRef}
+        ref={fileInputRef}
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={swap.handleFileChange}
+        onChange={handleFileChange}
       />
 
       {/* Swap choice popover (portal to scroll container for absolute positioning) */}
-      {swap.swapPopover && createPortal(
+      {swapPopover && createPortal(
         <div
-          ref={swap.popoverRef}
+          ref={popoverRef}
           className="absolute z-9999 bg-white shadow-xl border border-gray-200 rounded-lg py-1 w-44"
           style={{
-            left: swap.swapPopover.x,
-            top: swap.swapPopover.y,
+            left: swapPopover.x,
+            top: swapPopover.y,
             transform: 'translateX(-50%)',
           }}
           onMouseDown={e => e.stopPropagation()}
         >
           <button
             className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors flex items-center gap-2.5 text-gray-700"
-            onClick={swap.openIconPicker}
+            onClick={openIconPicker}
           >
             <Shapes size={16} className="text-purple-500" />
             Escolher ícone
           </button>
           <button
             className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors flex items-center gap-2.5 text-gray-700"
-            onClick={swap.openFileInput}
+            onClick={openFileInput}
           >
             <Image size={16} className="text-blue-500" />
             Enviar imagem
           </button>
         </div>,
-        swap.getPortalTarget(),
+        getPortalTarget(),
       )}
 
       {/* Icon picker floating panel (portal to scroll container) */}
-      {swap.iconPickerOpen && createPortal(
+      {iconPickerOpen && createPortal(
         <div
           className="absolute z-9999"
           style={{
-            left: swap.iconPickerPos.x,
-            top: swap.iconPickerPos.y,
+            left: iconPickerPos.x,
+            top: iconPickerPos.y,
             transform: 'translateX(-50%)',
           }}
         >
           <IconPicker
-            onSelect={swap.handleIconSelect}
-            onClose={swap.handleCloseIconPicker}
+            onSelect={handleIconSelect}
+            onClose={handleCloseIconPicker}
           />
         </div>,
-        swap.getPortalTarget(),
+        getPortalTarget(),
       )}
     </div>
   );

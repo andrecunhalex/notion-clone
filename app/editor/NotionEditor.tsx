@@ -24,7 +24,6 @@ import { FontLoader } from './components/FontLoader';
 import { SYSTEM_FONTS, DEFAULT_FONT_SIZE } from './fonts';
 import { EditorProvider, EditorDataSource, useLocalDataSource } from './EditorProvider';
 import { DesignLibraryProvider } from './designLibrary';
-import type { DesignLibraryConfig } from './designLibrary';
 import { useVersionHistory } from './hooks/useVersionHistory';
 import { RemoteCursorsOverlay } from './collaboration/RemoteCursors';
 
@@ -995,7 +994,7 @@ const NotionEditorInner: React.FC<{
 };
 
 // Main export — sets up FontLoader + data source
-export const NotionEditor: React.FC<NotionEditorProps & { designLibraryConfig?: DesignLibraryConfig }> = ({
+export const NotionEditor: React.FC<NotionEditorProps> = ({
   initialBlocks = [DEFAULT_BLOCK],
   onChange,
   defaultViewMode = 'paginated',

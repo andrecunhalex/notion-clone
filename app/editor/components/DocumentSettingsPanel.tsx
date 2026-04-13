@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { X, ChevronUp, ChevronDown, Upload, EyeOff, ImageIcon, Library } from 'lucide-react';
 import { DocumentPageSettings, PageBackground, PAGE_PRESETS } from '../types';
-import { DesignBlockPicker } from './designBlocks/DesignBlockPicker';
+import { DesignBlockPicker } from './designBlocks/picker';
 
 // ---------------------------------------------------------------------------
 // Props

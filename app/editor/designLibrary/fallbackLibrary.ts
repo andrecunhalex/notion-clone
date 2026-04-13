@@ -6,6 +6,7 @@
 // in local/demo mode without polluting the picker with example blocks.
 // ---------------------------------------------------------------------------
 
+import { sanitizeTemplateHtml } from './sanitizeTemplate';
 import type {
   DesignLibraryInterface,
   LibraryClause,
@@ -38,7 +39,7 @@ export function createFallbackLibrary(documentId: string = '__fallback_doc__'): 
       const tpl: LibraryTemplate = {
         id: input.id ?? generateId('tpl'),
         name: input.name,
-        html: input.html,
+        html: sanitizeTemplateHtml(input.html),
         defaults: input.defaults,
         autonumber: input.autonumber,
         workspaceId: FALLBACK_WORKSPACE,
@@ -55,7 +56,7 @@ export function createFallbackLibrary(documentId: string = '__fallback_doc__'): 
         updated = {
           ...t,
           ...(patch.name !== undefined ? { name: patch.name } : null),
-          ...(patch.html !== undefined ? { html: patch.html } : null),
+          ...(patch.html !== undefined ? { html: sanitizeTemplateHtml(patch.html) } : null),
           ...(patch.defaults !== undefined ? { defaults: patch.defaults } : null),
           ...(patch.autonumber !== undefined ? { autonumber: patch.autonumber } : null),
         };

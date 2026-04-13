@@ -10,6 +10,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient } from '../collaboration/supabase-client';
+import { sanitizeTemplateHtml } from './sanitizeTemplate';
 import type {
   DesignLibraryConfig,
   DesignLibraryInterface,
@@ -74,8 +75,8 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
   const notify = () => { for (const l of listeners) l(); };
   const commit = (next: LibrarySnapshot) => { snapshot = next; notify(); };
 
-  // --- Initial fetch ------------------------------------------------------
-  async function refetch() {
+  // --- Initial bootstrap fetch -------------------------------------------
+  async function bootstrap() {
     const [{ data: tplRows, error: tplErr }, { data: clauseRows, error: clauseErr }] = await Promise.all([
       client.from('design_block_templates').select('*').eq('workspace_id', workspaceId),
       client.from('design_clauses').select('*').eq('workspace_id', workspaceId),
@@ -90,20 +91,68 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
     });
   }
 
-  refetch();
+  bootstrap();
 
-  // --- Realtime subscription ---------------------------------------------
+  // --- Realtime subscription — incremental updates -----------------------
+  // We apply postgres_changes payloads directly to the snapshot instead of
+  // refetching. This costs zero extra queries per mutation (vs. one full
+  // SELECT before) and keeps the snapshot in sync regardless of who made
+  // the change (this tab via optimistic update or a remote client).
+  function applyTemplateChange(event: 'INSERT' | 'UPDATE' | 'DELETE', newRow?: DbTemplateRow, oldRow?: DbTemplateRow) {
+    const id = newRow?.id ?? oldRow?.id;
+    if (!id) return;
+    if (event === 'DELETE') {
+      commit({ ...snapshot, templates: snapshot.templates.filter(t => t.id !== id) });
+      return;
+    }
+    if (!newRow) return;
+    const tpl = rowToTemplate(newRow);
+    const exists = snapshot.templates.some(t => t.id === id);
+    const templates = exists
+      ? snapshot.templates.map(t => (t.id === id ? tpl : t))
+      : [...snapshot.templates, tpl];
+    commit({ ...snapshot, templates });
+  }
+
+  function applyClauseChange(event: 'INSERT' | 'UPDATE' | 'DELETE', newRow?: DbClauseRow, oldRow?: DbClauseRow) {
+    const id = newRow?.id ?? oldRow?.id;
+    if (!id) return;
+    if (event === 'DELETE') {
+      commit({ ...snapshot, clauses: snapshot.clauses.filter(c => c.id !== id) });
+      return;
+    }
+    if (!newRow) return;
+    const clause = rowToClause(newRow);
+    const exists = snapshot.clauses.some(c => c.id === id);
+    const clauses = exists
+      ? snapshot.clauses.map(c => (c.id === id ? clause : c))
+      : [...snapshot.clauses, clause];
+    commit({ ...snapshot, clauses });
+  }
+
   const channel = client
     .channel(`design-library:${workspaceId}:${documentId}`)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'design_block_templates', filter: `workspace_id=eq.${workspaceId}` },
-      () => { refetch(); },
+      (payload) => {
+        applyTemplateChange(
+          payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE',
+          payload.new as DbTemplateRow | undefined,
+          payload.old as DbTemplateRow | undefined,
+        );
+      },
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'design_clauses', filter: `workspace_id=eq.${workspaceId}` },
-      () => { refetch(); },
+      (payload) => {
+        applyClauseChange(
+          payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE',
+          payload.new as DbClauseRow | undefined,
+          payload.old as DbClauseRow | undefined,
+        );
+      },
     )
     .subscribe();
 
@@ -124,7 +173,7 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
         workspace_id: workspaceId,
         document_id: documentId,
         name: input.name,
-        html: input.html,
+        html: sanitizeTemplateHtml(input.html),
         defaults: input.defaults,
         autonumber: input.autonumber ?? null,
         created_by: userId ?? null,
@@ -143,7 +192,7 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
     async updateTemplate(id, patch) {
       const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (patch.name !== undefined) updates.name = patch.name;
-      if (patch.html !== undefined) updates.html = patch.html;
+      if (patch.html !== undefined) updates.html = sanitizeTemplateHtml(patch.html);
       if (patch.defaults !== undefined) updates.defaults = patch.defaults;
       if (patch.autonumber !== undefined) updates.autonumber = patch.autonumber ?? null;
 
