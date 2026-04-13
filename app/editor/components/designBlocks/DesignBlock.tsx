@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Image, Shapes } from 'lucide-react';
 import { BlockData } from '../../types';
 import { getTemplate } from './registry';
+import { useLibraryTemplate } from '../../designLibrary';
 import { IconPicker } from './IconPicker';
 import { useSwappable } from './useSwappable';
 
@@ -81,6 +82,8 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
   const isLocalEdit = useRef(false);
   const isBuilt = useRef(false);
   const mountedTemplateId = useRef<string | null>(null);
+  /** Tracks the html signature of the mounted template so we rebuild on edit */
+  const mountedTemplateHtml = useRef<string | null>(null);
 
   // Stable refs to avoid stale closures in DOM event listeners
   const valuesRef = useRef(block.designBlockData?.values ?? {});
@@ -91,10 +94,12 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
   updateBlockRef.current = updateBlock;
 
   const data = block.designBlockData;
-  if (!data) return null;
-
-  const template = getTemplate(data.templateId);
-  if (!template) return null;
+  // Subscribe to the template in the library store. When the template HTML is
+  // edited, every DesignBlock using it re-renders and the useEffect below
+  // rebuilds the DOM (because template identity changes).
+  const liveTemplate = useLibraryTemplate(data?.templateId);
+  const template = liveTemplate ?? (data ? getTemplate(data.templateId) : undefined);
+  if (!data || !template) return null;
 
   const values = data.values;
 
@@ -186,7 +191,9 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
       return;
     }
 
-    const needsFullBuild = !isBuilt.current || mountedTemplateId.current !== data.templateId;
+    const needsFullBuild = !isBuilt.current
+      || mountedTemplateId.current !== data.templateId
+      || mountedTemplateHtml.current !== template.html;
 
     if (needsFullBuild) {
       const div = document.createElement('div');
@@ -228,6 +235,7 @@ export const DesignBlock: React.FC<DesignBlockProps> = ({ block, updateBlock, up
 
       isBuilt.current = true;
       mountedTemplateId.current = data.templateId;
+      mountedTemplateHtml.current = template.html;
     } else {
       container.querySelectorAll<HTMLElement>('[data-editable]').forEach(el => {
         const key = el.getAttribute('data-editable')!;

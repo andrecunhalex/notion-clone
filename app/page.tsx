@@ -24,6 +24,9 @@ const sessionUserId = typeof crypto !== 'undefined' && crypto.randomUUID
   : Math.random().toString(36).slice(2);
 
 const DOC_ID = 'demo-doc';
+// Mocked while the real workspace model isn't wired up — every design-library
+// resource is scoped to this id alongside DOC_ID.
+const WORKSPACE_ID = 'demo-workspace';
 
 export default function Home() {
   if (HAS_COLLAB) {
@@ -81,6 +84,13 @@ function CollaborativeEditor() {
           supabaseAnonKey: SUPABASE_ANON_KEY!,
           documentId: DOC_ID,
           user: { id: sessionUserId, name: `User ${sessionUserId.slice(0, 4)}`, color: randomColor },
+        }}
+        designLibraryConfig={{
+          supabaseUrl: SUPABASE_URL!,
+          supabaseAnonKey: SUPABASE_ANON_KEY!,
+          workspaceId: WORKSPACE_ID,
+          documentId: DOC_ID,
+          userId: sessionUserId,
         }}
         commentUser={{ id: sessionUserId, name: `User ${sessionUserId.slice(0, 4)}` }}
         initialMeta={{

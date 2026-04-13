@@ -8,7 +8,12 @@
 // To add a new design: push a new object to DESIGN_TEMPLATES.
 // To import from Figma: export HTML, add data-editable/data-swappable
 // attributes to interactive elements, and register here.
+//
+// NOTE: DESIGN_TEMPLATES is only the built-in seed. User-defined templates
+// live in the design library (see ../../designLibrary) and are fetched from
+// Supabase at runtime. getTemplate() resolves from the live library first.
 // ---------------------------------------------------------------------------
+import { getTemplateFromStore } from '../../designLibrary/store';
 
 export interface DesignBlockTemplate {
   id: string;
@@ -152,6 +157,16 @@ export const DESIGN_TEMPLATES: DesignBlockTemplate[] = [
   
 ];
 
+/**
+ * Resolve a template by id.
+ *
+ * Reads the active design library first (installed by DesignLibraryProvider)
+ * so that user-created/remote templates are always returned. Falls back to the
+ * built-in DESIGN_TEMPLATES array when no library is mounted (fallback mode)
+ * or the id is only known at build time.
+ */
 export function getTemplate(id: string): DesignBlockTemplate | undefined {
+  const fromStore = getTemplateFromStore(id);
+  if (fromStore) return fromStore;
   return DESIGN_TEMPLATES.find(t => t.id === id);
 }

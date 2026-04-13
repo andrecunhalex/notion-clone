@@ -18,9 +18,13 @@ import { SectionNavPanel } from './components/SectionNavPanel';
 import { VersionHistoryOverlay } from './components/VersionHistory';
 import type { SectionNavMeta } from './hooks/useSectionNav';
 import { getTemplate } from './components/designBlocks';
+import { getClauseFromStore } from './designLibrary';
+import type { SlashSelection } from './components/SlashMenu';
 import { FontLoader } from './components/FontLoader';
 import { SYSTEM_FONTS, DEFAULT_FONT_SIZE } from './fonts';
 import { EditorProvider, EditorDataSource, useLocalDataSource } from './EditorProvider';
+import { DesignLibraryProvider } from './designLibrary';
+import type { DesignLibraryConfig } from './designLibrary';
 import { useVersionHistory } from './hooks/useVersionHistory';
 import { RemoteCursorsOverlay } from './collaboration/RemoteCursors';
 
@@ -286,7 +290,7 @@ const NotionEditorInner: React.FC<{
     }
   }, [didDragSelect, blocks, addBlock]);
 
-  const handleSlashMenuSelect = useCallback((type: BlockData['type'], templateId?: string) => {
+  const handleSlashMenuSelect = useCallback((sel: SlashSelection) => {
     if (!slashMenu.blockId) return;
 
     const blockEl = document.getElementById(`editable-${slashMenu.blockId}`);
@@ -308,6 +312,35 @@ const NotionEditorInner: React.FC<{
       cleanContent = blockEl.innerHTML;
       if (isContentEmpty(cleanContent)) cleanContent = '';
     }
+
+    // --- Clause insertion: expand N design blocks in a single setBlocks call
+    if (sel.kind === 'clause') {
+      const clause = getClauseFromStore(sel.clauseId);
+      if (!clause || clause.items.length === 0) {
+        setSlashMenu(prev => ({ ...prev, isOpen: false }));
+        return;
+      }
+      if (blockEl) blockEl.innerHTML = '';
+      const idx = blocks.findIndex(b => b.id === slashMenu.blockId);
+      const newDesignBlocks: BlockData[] = clause.items.map(item => ({
+        id: generateId(),
+        type: 'design_block' as const,
+        content: '',
+        designBlockData: { templateId: item.templateId, values: { ...item.values } },
+      }));
+      const newTextBlock: BlockData = { id: generateId(), type: 'text', content: '' };
+
+      const newBlocks = [...blocks];
+      // Replace the triggering block with the first design block, then splice
+      // the rest + trailing text block immediately after it.
+      newBlocks.splice(idx, 1, ...newDesignBlocks, newTextBlock);
+      setBlocks(newBlocks);
+      setSlashMenu(prev => ({ ...prev, isOpen: false }));
+      focusBlock(newTextBlock.id);
+      return;
+    }
+
+    const { type, templateId } = sel;
 
     if (type === 'divider') {
       if (blockEl) blockEl.innerHTML = '';
@@ -929,6 +962,7 @@ const NotionEditorInner: React.FC<{
           onSectionNavPagesChange={setSectionNavPages}
           hasSections={hasSections}
           uploadImage={config.uploadImage}
+          currentDocumentId={collaborationConfig?.documentId ?? '__local__'}
         />
       )}
 
@@ -940,6 +974,8 @@ const NotionEditorInner: React.FC<{
           y={slashMenu.y}
           close={() => setSlashMenu(prev => ({ ...prev, isOpen: false }))}
           onSelect={handleSlashMenuSelect}
+          currentDocumentId={collaborationConfig?.documentId ?? '__local__'}
+          uploadImage={config.uploadImage}
         />
       )}
 
@@ -959,7 +995,7 @@ const NotionEditorInner: React.FC<{
 };
 
 // Main export — sets up FontLoader + data source
-export const NotionEditor: React.FC<NotionEditorProps> = ({
+export const NotionEditor: React.FC<NotionEditorProps & { designLibraryConfig?: DesignLibraryConfig }> = ({
   initialBlocks = [DEFAULT_BLOCK],
   onChange,
   defaultViewMode = 'paginated',
@@ -975,6 +1011,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
   initialMeta,
   commentUser,
   onCommentsChange,
+  designLibraryConfig,
 }) => {
   const localDataSource = useLocalDataSource(initialBlocks, config.historyDebounceMs, initialMeta as import('./EditorProvider').DocumentMeta | undefined);
   const noopSetMeta = useCallback(() => {}, []);
@@ -990,6 +1027,10 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
 
   return (
     <FontLoader fetchFonts={config.fetchFonts}>
+      <DesignLibraryProvider
+        config={designLibraryConfig}
+        documentId={designLibraryConfig?.documentId ?? collaborationConfig?.documentId}
+      >
       <EditorProvider dataSource={dataSource}>
         <NotionEditorInner
           dataSource={dataSource}
@@ -1008,6 +1049,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           initialMeta={initialMeta}
         />
       </EditorProvider>
+      </DesignLibraryProvider>
     </FontLoader>
   );
 };
