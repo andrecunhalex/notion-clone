@@ -37,6 +37,9 @@ export interface LibraryClause {
 export interface LibrarySnapshot {
   templates: LibraryTemplate[];
   clauses: LibraryClause[];
+  /** False until the initial fetch completes (or fails). Consumers can use
+   *  this to render a loading state instead of "no items found". */
+  bootstrapped: boolean;
 }
 
 /**
@@ -68,6 +71,9 @@ export interface DesignLibraryInterface {
   createClause: (input: ClauseInput) => Promise<LibraryClause>;
   updateClause: (id: string, patch: Partial<ClauseInput>) => Promise<LibraryClause>;
   deleteClause: (id: string) => Promise<void>;
+  /** Tear down realtime subscriptions / network resources. Called by the
+   *  Provider when no consumers remain. Idempotent. */
+  dispose: () => void;
 }
 
 export interface DesignLibraryConfig {

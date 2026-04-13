@@ -21,7 +21,11 @@ import { TemplatePreview } from '../TemplatePreview';
 import type { BlockData } from '../../../types';
 import { generateItemId } from './helpers';
 
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type SaveState = 'idle' | 'saving' | 'saved' | 'retrying' | 'error';
+
+/** Backoff delays in ms — each retry waits longer than the previous, capped
+ *  at 30s. Resets to the first delay after a successful save. */
+const RETRY_BACKOFF = [1000, 2000, 4000, 8000, 16000, 30000] as const;
 
 interface ClauseInlineEditorProps {
   clause: LibraryClause;
@@ -37,14 +41,27 @@ export const ClauseInlineEditor: React.FC<ClauseInlineEditorProps> = ({
   clause, availableTemplates, canInsert, onInsert, onDelete, uploadImage, onMobileBack,
 }) => {
   const library = useDesignLibrary();
-  const [name, setName] = useState(clause.name);
-  const [items, setItems] = useState<ClauseItem[]>(clause.items);
+  const [name, setNameRaw] = useState(clause.name);
+  const [items, setItemsRaw] = useState<ClauseItem[]>(clause.items);
   const [pickingBlock, setPickingBlock] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('idle');
 
-  // Skip the very first auto-save effect run — mount values match props,
-  // there's nothing to persist.
-  const isFirstRun = useRef(true);
+  // True only after the user has actually mutated something in this
+  // component instance. Selecting a clause / mounting / Strict-Mode
+  // double-effect will never set it. Without this guard the auto-save
+  // effect runs on mount because Strict Mode flips the "first run" flag.
+  const userEditedRef = useRef(false);
+
+  // Mutation wrappers — every place that changes name/items goes through
+  // these. Any setter that doesn't go through here won't trigger a save.
+  const setName = useCallback((v: string) => {
+    userEditedRef.current = true;
+    setNameRaw(v);
+  }, []);
+  const setItems = useCallback((updater: (prev: ClauseItem[]) => ClauseItem[]) => {
+    userEditedRef.current = true;
+    setItemsRaw(updater);
+  }, []);
 
   // Hide the "Salvo" indicator after 2s.
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,34 +74,73 @@ export const ClauseInlineEditor: React.FC<ClauseInlineEditorProps> = ({
     };
   }, [saveState]);
 
-  // Debounced auto-save: fires 500ms after the user stops typing. Save state
-  // walks: idle → saving → saved (or error).
+  // --- Auto-save with retry/backoff --------------------------------------
+  // Strategy:
+  //   1. User edits → debounce 500ms → attempt save.
+  //   2. On success: state → 'saved' (auto-clears after 2s), reset retry index.
+  //   3. On failure: state → 'retrying', schedule next attempt with backoff.
+  //   4. Subsequent edits during retry restart the debounce + cancel the
+  //      pending retry so we save the freshest snapshot, not the stale one.
+  //
+  // The save closure captures `name` and `items` from React state, so each
+  // attempt naturally retries with the latest values queued at the time of
+  // the attempt — no separate "queue" structure needed.
+  const retryIndexRef = useRef(0);
+  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    if (isFirstRun.current) {
-      isFirstRun.current = false;
-      return;
+    if (!userEditedRef.current) return;
+
+    // Cancel any in-flight scheduled attempt — we'll reschedule with the
+    // freshest snapshot below.
+    if (pendingTimerRef.current) {
+      clearTimeout(pendingTimerRef.current);
+      pendingTimerRef.current = null;
     }
-    const handle = setTimeout(async () => {
+
+    // Reset retry index on every fresh user edit so backoff doesn't carry
+    // over from a previous failure.
+    retryIndexRef.current = 0;
+
+    let cancelled = false;
+
+    const attempt = async () => {
+      if (cancelled) return;
       setSaveState('saving');
       try {
         await library.updateClause(clause.id, { name, items });
+        if (cancelled) return;
         setSaveState('saved');
+        retryIndexRef.current = 0;
       } catch (err) {
-        console.error('[clause autosave] failed', err);
-        setSaveState('error');
+        if (cancelled) return;
+        console.error('[clause autosave] failed, will retry', err);
+        const delay = RETRY_BACKOFF[Math.min(retryIndexRef.current, RETRY_BACKOFF.length - 1)];
+        retryIndexRef.current += 1;
+        setSaveState('retrying');
+        pendingTimerRef.current = setTimeout(attempt, delay);
       }
-    }, 500);
-    return () => clearTimeout(handle);
+    };
+
+    pendingTimerRef.current = setTimeout(attempt, 500);
+
+    return () => {
+      cancelled = true;
+      if (pendingTimerRef.current) {
+        clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = null;
+      }
+    };
   }, [name, items, clause.id, library]);
 
   // --- Item mutations ---------------------------------------------------
   const updateItemValues = useCallback((itemId: string, newValues: Record<string, string>) => {
     setItems(prev => prev.map(it => it.id === itemId ? { ...it, values: { ...it.values, ...newValues } } : it));
-  }, []);
+  }, [setItems]);
 
   const removeItem = useCallback((itemId: string) => {
     setItems(prev => prev.filter(it => it.id !== itemId));
-  }, []);
+  }, [setItems]);
 
   const moveItem = useCallback((itemId: string, direction: -1 | 1) => {
     setItems(prev => {
@@ -96,12 +152,12 @@ export const ClauseInlineEditor: React.FC<ClauseInlineEditorProps> = ({
       [copy[idx], copy[next]] = [copy[next], copy[idx]];
       return copy;
     });
-  }, []);
+  }, [setItems]);
 
   const addBlock = useCallback((tpl: LibraryTemplate) => {
     setItems(prev => [...prev, { id: generateItemId(), templateId: tpl.id, values: { ...tpl.defaults } }]);
     setPickingBlock(false);
-  }, []);
+  }, [setItems]);
 
   return (
     <>
@@ -213,6 +269,13 @@ const SaveStateBadge: React.FC<{ state: SaveState }> = ({ state }) => {
     return (
       <span className="hidden sm:flex items-center gap-1 text-[11px] text-gray-400 shrink-0" aria-live="polite">
         <LoaderCircle size={11} className="animate-spin" /> Salvando...
+      </span>
+    );
+  }
+  if (state === 'retrying') {
+    return (
+      <span className="flex items-center gap-1 text-[11px] text-amber-600 shrink-0" aria-live="polite" title="Falha ao salvar — tentando novamente">
+        <LoaderCircle size={11} className="animate-spin" /> Tentando novamente...
       </span>
     );
   }

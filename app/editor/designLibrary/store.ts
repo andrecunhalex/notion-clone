@@ -14,7 +14,7 @@
 
 import type { DesignLibraryInterface, LibrarySnapshot, LibraryTemplate, LibraryClause } from './types';
 
-const EMPTY_SNAPSHOT: LibrarySnapshot = { templates: [], clauses: [] };
+const EMPTY_SNAPSHOT: LibrarySnapshot = { templates: [], clauses: [], bootstrapped: false };
 
 let activeLibrary: DesignLibraryInterface | null = null;
 let cachedSnapshot: LibrarySnapshot = EMPTY_SNAPSHOT;

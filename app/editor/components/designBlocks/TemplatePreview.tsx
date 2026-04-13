@@ -15,6 +15,7 @@
 
 import React, { useMemo } from 'react';
 import { buildPreviewHtml } from './previewHtml';
+import { sanitizeTemplateHtml } from '../../designLibrary/sanitizeTemplate';
 import type { LibraryTemplate } from '../../designLibrary';
 import type { DesignBlockTemplate } from './registry';
 
@@ -37,7 +38,13 @@ function getCachedPreview(template: DesignBlockTemplate, values?: Record<string,
   const valueKey = values ? JSON.stringify(values) : 'default';
   const cached = entry.byValueKey.get(valueKey);
   if (cached !== undefined) return cached;
-  const html = buildPreviewHtml(template, values);
+  // Defense in depth: even though the library sanitizes on write, we
+  // sanitize again on render. If a row ever lands in the snapshot via a
+  // path that bypasses the library interface (manual SQL, future import
+  // pipeline, malicious payload from a compromised member), the preview
+  // still strips dangerous markup before injecting it via innerHTML.
+  // Cached, so the cost is paid at most once per (template, values) pair.
+  const html = sanitizeTemplateHtml(buildPreviewHtml(template, values));
   entry.byValueKey.set(valueKey, html);
   return html;
 }

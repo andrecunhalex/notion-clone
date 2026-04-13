@@ -16,7 +16,7 @@ import type { LibraryClause, LibraryTemplate } from '../../../designLibrary';
 import { BlocksTab } from './BlocksTab';
 import { ClausesTab } from './ClausesTab';
 import { TemplateEditor } from './TemplateEditor';
-import { ConfirmDialog } from './ConfirmDialog';
+import { UndoToast } from './UndoToast';
 import { isEditableFocused } from './helpers';
 import type { PickerResult, Tab, View } from './types';
 
@@ -31,11 +31,12 @@ interface DesignBlockPickerProps {
   uploadImage?: (file: File) => Promise<string | null>;
 }
 
-interface PendingDeletion {
-  kind: 'template' | 'clause';
-  id: string;
-  name: string;
-}
+/** A delete that has already been applied to the DB but can still be undone
+ *  for `durationMs`. We snapshot the resource here so we can restore it via
+ *  createTemplate/createClause if the user clicks "Desfazer". */
+type PendingUndo =
+  | { kind: 'template'; snapshot: import('../../../designLibrary').LibraryTemplate }
+  | { kind: 'clause'; snapshot: import('../../../designLibrary').LibraryClause };
 
 export const DesignBlockPicker: React.FC<DesignBlockPickerProps> = ({
   currentDocumentId, onPick, onClose, uploadImage,
@@ -50,8 +51,8 @@ export const DesignBlockPicker: React.FC<DesignBlockPickerProps> = ({
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   /** Mobile-only master-detail step tracker for the clauses tab. */
   const [clausesMobileView, setClausesMobileView] = useState<'list' | 'editor'>('list');
-  /** Pending delete confirmation (template or clause) — null when not asking. */
-  const [pendingDelete, setPendingDelete] = useState<PendingDeletion | null>(null);
+  /** Most recent delete that can still be undone. Null = no pending undo. */
+  const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(null);
 
   // --- Search / sectioning -----------------------------------------------
   const templatesById = useMemo(() => {
@@ -104,7 +105,10 @@ export const DesignBlockPicker: React.FC<DesignBlockPickerProps> = ({
   const searchRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { searchRef.current?.focus(); }, []);
+  // Don't auto-focus the search input on open — that would steal arrow-key
+  // navigation from the list. The user can still click into the input or
+  // start typing (the global keyboard handler doesn't trap text characters
+  // unless the user is focused on it).
 
   const scrollFocusIntoView = useCallback((container: HTMLDivElement | null) => {
     requestAnimationFrame(() => {
@@ -138,7 +142,7 @@ export const DesignBlockPicker: React.FC<DesignBlockPickerProps> = ({
   // --- Keyboard nav (list mode only) -------------------------------------
   useEffect(() => {
     if (view.mode !== 'list') return;
-    if (pendingDelete) return; // confirm dialog owns the keyboard
+    if (pendingUndo) return; // undo toast owns Esc
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
       const editing = isEditableFocused();
@@ -173,7 +177,7 @@ export const DesignBlockPicker: React.FC<DesignBlockPickerProps> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [view.mode, tab, flatBlocks, flatClauses, effectiveFocusedBlockId, effectiveSelectedClauseId, selectedClause, onPick, onClose, pendingDelete]);
+  }, [view.mode, tab, flatBlocks, flatClauses, effectiveFocusedBlockId, effectiveSelectedClauseId, selectedClause, onPick, onClose, pendingUndo]);
 
   // --- CRUD handlers ------------------------------------------------------
   const openNew = useCallback(async () => {
@@ -195,28 +199,54 @@ export const DesignBlockPicker: React.FC<DesignBlockPickerProps> = ({
     setView({ mode: 'edit-template', template: tpl });
   }, []);
 
-  const requestDeleteTemplate = useCallback((tpl: LibraryTemplate) => {
-    setPendingDelete({ kind: 'template', id: tpl.id, name: tpl.name });
-  }, []);
-
-  const requestDeleteClause = useCallback((clause: LibraryClause) => {
-    setPendingDelete({ kind: 'clause', id: clause.id, name: clause.name });
-  }, []);
-
-  const confirmDelete = useCallback(async () => {
-    if (!pendingDelete) return;
+  // Optimistic delete + undo toast. We delete immediately and snapshot the
+  // resource so the user can restore it within 5s. The realtime channel
+  // will propagate the delete to other clients; if the user clicks Undo,
+  // we re-create the resource (with the same id) and the realtime channel
+  // propagates the re-creation. Race conditions across users editing the
+  // same resource simultaneously are unlikely for a design library.
+  const requestDeleteTemplate = useCallback(async (tpl: LibraryTemplate) => {
     try {
-      if (pendingDelete.kind === 'template') {
-        await library.deleteTemplate(pendingDelete.id);
+      await library.deleteTemplate(tpl.id);
+      setPendingUndo({ kind: 'template', snapshot: tpl });
+    } catch (err) {
+      console.error('[design library] delete template failed', err);
+    }
+  }, [library]);
+
+  const requestDeleteClause = useCallback(async (clause: LibraryClause) => {
+    try {
+      await library.deleteClause(clause.id);
+      setPendingUndo({ kind: 'clause', snapshot: clause });
+    } catch (err) {
+      console.error('[design library] delete clause failed', err);
+    }
+  }, [library]);
+
+  const undoDelete = useCallback(async () => {
+    if (!pendingUndo) return;
+    const undo = pendingUndo;
+    setPendingUndo(null);
+    try {
+      if (undo.kind === 'template') {
+        await library.createTemplate({
+          id: undo.snapshot.id,
+          name: undo.snapshot.name,
+          html: undo.snapshot.html,
+          defaults: undo.snapshot.defaults,
+          autonumber: undo.snapshot.autonumber,
+        });
       } else {
-        await library.deleteClause(pendingDelete.id);
+        await library.createClause({
+          id: undo.snapshot.id,
+          name: undo.snapshot.name,
+          items: undo.snapshot.items,
+        });
       }
     } catch (err) {
-      console.error('[design library] delete failed', err);
-    } finally {
-      setPendingDelete(null);
+      console.error('[design library] undo failed', err);
     }
-  }, [pendingDelete, library]);
+  }, [pendingUndo, library]);
 
   const pickBlock = useCallback((tpl: LibraryTemplate) => {
     onPick?.({ kind: 'template', template: tpl });
@@ -311,6 +341,7 @@ export const DesignBlockPicker: React.FC<DesignBlockPickerProps> = ({
               onPick={pickBlock}
               onEdit={editTemplate}
               onDelete={requestDeleteTemplate}
+              loading={!snapshot.bootstrapped}
             />
           ) : (
             <ClausesTab
@@ -327,6 +358,7 @@ export const DesignBlockPicker: React.FC<DesignBlockPickerProps> = ({
               uploadImage={uploadImage}
               mobileView={clausesMobileView}
               onMobileBack={() => setClausesMobileView('list')}
+              loading={!snapshot.bootstrapped}
             />
           )}
         </div>
@@ -342,18 +374,19 @@ export const DesignBlockPicker: React.FC<DesignBlockPickerProps> = ({
         </div>
       </div>
 
-      {/* Delete confirmation — portaled separately, owns its own keyboard */}
-      <ConfirmDialog
-        open={!!pendingDelete}
-        title={pendingDelete?.kind === 'template' ? 'Excluir bloco' : 'Excluir cláusula'}
-        message={pendingDelete ? `Tem certeza que deseja excluir "${pendingDelete.name}"? Esta ação não pode ser desfeita.` : ''}
-        confirmLabel="Excluir"
-        destructive
-        onConfirm={confirmDelete}
-        onCancel={() => setPendingDelete(null)}
-      />
     </div>
   );
 
-  return createPortal(modal, document.body);
+  return (
+    <>
+      {createPortal(modal, document.body)}
+      {pendingUndo && (
+        <UndoToast
+          message={`"${pendingUndo.snapshot.name}" excluído`}
+          onUndo={undoDelete}
+          onDismiss={() => setPendingUndo(null)}
+        />
+      )}
+    </>
+  );
 };

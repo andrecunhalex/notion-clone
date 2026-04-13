@@ -6,8 +6,25 @@ import { Image, Shapes } from 'lucide-react';
 import { BlockData } from '../../types';
 import { getTemplate } from './registry';
 import { useLibraryTemplate } from '../../designLibrary';
+import { sanitizeTemplateHtml } from '../../designLibrary/sanitizeTemplate';
 import { IconPicker } from './IconPicker';
 import { useSwappable } from './useSwappable';
+
+// ---------------------------------------------------------------------------
+// Defense-in-depth render-time sanitization
+// ---------------------------------------------------------------------------
+// The library sanitizes on write, but we sanitize again on render. Cached
+// per `template.html` identity so we only pay the cost once per template
+// (and across re-renders of every block using that template).
+// ---------------------------------------------------------------------------
+const sanitizedHtmlCache = new Map<string, string>();
+function getSafeTemplateHtml(html: string): string {
+  const cached = sanitizedHtmlCache.get(html);
+  if (cached !== undefined) return cached;
+  const safe = sanitizeTemplateHtml(html);
+  sanitizedHtmlCache.set(html, safe);
+  return safe;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -249,7 +266,7 @@ const DesignBlockInner: React.FC<DesignBlockInnerProps> = ({ block, data, templa
 
     if (needsFullBuild) {
       const div = document.createElement('div');
-      div.innerHTML = template.html;
+      div.innerHTML = getSafeTemplateHtml(template.html);
 
       div.querySelectorAll<HTMLElement>('[data-editable]').forEach(el => {
         const key = el.getAttribute('data-editable')!;

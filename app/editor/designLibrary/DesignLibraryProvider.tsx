@@ -5,7 +5,7 @@
 // ---------------------------------------------------------------------------
 // Wraps the editor, installs a DesignLibraryInterface into the module store,
 // and exposes it via React context for components that need CRUD access
-// (SlashMenu picker, DesignSettings manager).
+// (picker modal, settings panel manager).
 //
 // Rendering code (DesignBlock, preview builders) does NOT read from context —
 // it reads directly from the module store via useSyncExternalStore, so changes
@@ -19,29 +19,59 @@ import { createSupabaseLibrary } from './supabaseLibrary';
 import type { DesignLibraryInterface, DesignLibraryConfig } from './types';
 
 // ---------------------------------------------------------------------------
-// Module-level instance cache
+// Refcounted instance cache
 // ---------------------------------------------------------------------------
-// Keyed by the config identity (url + workspace + doc). A single entry per key
-// means:
-//   * React Strict Mode's double-invoke of useMemo in dev doesn't create two
-//     libraries (two refetches, two realtime channels)
-//   * Mounting the same editor twice in the tree (unlikely but possible) or
-//     remounting after a transient unmount reuses the same live snapshot
-//     instead of fetching everything again
+// Multiple Providers can mount in the tree (rare, but possible — e.g. a
+// preview pane next to the editor). They all share the same library
+// instance for a given key so we don't create N realtime channels.
+//
+// Each acquire() bumps the refcount; release() decrements it. When the count
+// hits zero we call dispose() on the instance to tear down sockets, then
+// remove it from the cache. The next acquire() with the same key starts a
+// fresh instance (and re-bootstraps).
+//
+// This replaces the old "leak forever / cleanup on beforeunload" approach
+// which broke on SPA navigation.
 // ---------------------------------------------------------------------------
 
-const libraryCache = new Map<string, DesignLibraryInterface>();
+interface CacheEntry {
+  lib: DesignLibraryInterface;
+  refs: number;
+}
 
-function getOrCreateLibrary(
+const libraryCache = new Map<string, CacheEntry>();
+
+function acquireLibrary(
   key: string,
   factory: () => DesignLibraryInterface,
 ): DesignLibraryInterface {
   const existing = libraryCache.get(key);
-  if (existing) return existing;
+  if (existing) {
+    existing.refs += 1;
+    return existing.lib;
+  }
   const created = factory();
-  libraryCache.set(key, created);
+  libraryCache.set(key, { lib: created, refs: 1 });
   return created;
 }
+
+function releaseLibrary(key: string) {
+  const entry = libraryCache.get(key);
+  if (!entry) return;
+  entry.refs -= 1;
+  if (entry.refs <= 0) {
+    try {
+      entry.lib.dispose();
+    } catch (err) {
+      console.warn('[designLibrary] dispose threw', err);
+    }
+    libraryCache.delete(key);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
 
 interface ProviderProps {
   config?: DesignLibraryConfig;
@@ -55,19 +85,27 @@ interface ProviderProps {
 const DesignLibraryContext = createContext<DesignLibraryInterface | null>(null);
 
 export const DesignLibraryProvider: React.FC<ProviderProps> = ({ config, library, documentId, children }) => {
-  // Identity key so we only reuse/recreate the instance when config changes.
+  // Identity key. External libraries get a unique key so they don't collide
+  // with cached instances (and we never call dispose on caller-owned libs).
+  const externalKey = useMemo(
+    () => library ? `external:${Math.random().toString(36).slice(2)}` : null,
+    [library],
+  );
   const configKey = config
     ? `supabase:${config.supabaseUrl}:${config.workspaceId}:${config.documentId}`
-    : library
-      ? 'external'
-      : `fallback:${documentId ?? ''}`;
+    : externalKey ?? `fallback:${documentId ?? ''}`;
 
-  // Instance lookup goes through the module-level cache — see top of file.
-  // useMemo only keeps a stable reference within the current render cycle;
-  // the cache handles React Strict Mode + cross-mount deduping.
+  // Acquire the instance for this key. useMemo gives us a stable reference
+  // within the render cycle; the cache handles cross-mount deduping. The
+  // matching release happens in the effect cleanup below.
   const lib = useMemo<DesignLibraryInterface>(() => {
-    if (library) return library;
-    return getOrCreateLibrary(
+    if (library) {
+      // Caller-owned: register in cache so dispose isn't called on it
+      // accidentally if a sibling Provider tries to acquire the same key.
+      // The factory here just returns the existing instance.
+      return acquireLibrary(configKey, () => library);
+    }
+    return acquireLibrary(
       configKey,
       () => config ? createSupabaseLibrary(config) : createFallbackLibrary(documentId),
     );
@@ -75,10 +113,18 @@ export const DesignLibraryProvider: React.FC<ProviderProps> = ({ config, library
   }, [configKey]);
 
   // Register the active library in the module store so getTemplate() / preview
-  // helpers / DesignBlock render all see the same snapshot.
+  // helpers / DesignBlock render all see the same snapshot. Release on unmount
+  // — when the last consumer is gone, dispose tears down the realtime channel.
   useEffect(() => {
     setActiveLibrary(lib);
-    return () => { setActiveLibrary(null); };
+    return () => {
+      setActiveLibrary(null);
+      // Skip releasing caller-owned instances — they belong to the caller.
+      if (!library) {
+        releaseLibrary(configKey);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lib]);
 
   return (

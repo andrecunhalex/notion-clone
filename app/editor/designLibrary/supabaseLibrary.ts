@@ -70,7 +70,7 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
   const client: SupabaseClient = getSupabaseClient(config.supabaseUrl, config.supabaseAnonKey);
   const { workspaceId, documentId, userId } = config;
 
-  let snapshot: LibrarySnapshot = { templates: [], clauses: [] };
+  let snapshot: LibrarySnapshot = { templates: [], clauses: [], bootstrapped: false };
   const listeners = new Set<() => void>();
   const notify = () => { for (const l of listeners) l(); };
   const commit = (next: LibrarySnapshot) => { snapshot = next; notify(); };
@@ -88,6 +88,7 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
     commit({
       templates: (tplRows ?? []).map(rowToTemplate),
       clauses: (clauseRows ?? []).map(rowToClause),
+      bootstrapped: true,
     });
   }
 
@@ -156,9 +157,11 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
     )
     .subscribe();
 
-  if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload', () => { channel.unsubscribe(); }, { once: true });
-  }
+  // Channel is torn down by `dispose()` below — the Provider's refcounted
+  // cache calls it when the last consumer unmounts. We no longer rely on
+  // beforeunload (didn't fire on SPA navigation, leaked sockets).
+
+  let disposed = false;
 
   return {
     getSnapshot: () => snapshot,
@@ -256,6 +259,17 @@ export function createSupabaseLibrary(config: DesignLibraryConfig): DesignLibrar
       const { error } = await client.from('design_clauses').delete().eq('id', id);
       if (error) throw error;
       commit({ ...snapshot, clauses: snapshot.clauses.filter(c => c.id !== id) });
+    },
+
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      try {
+        channel.unsubscribe();
+      } catch (err) {
+        console.warn('[designLibrary] channel.unsubscribe failed', err);
+      }
+      listeners.clear();
     },
   };
 }

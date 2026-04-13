@@ -23,7 +23,9 @@ function generateId(prefix: string): string {
 }
 
 export function createFallbackLibrary(documentId: string = '__fallback_doc__'): DesignLibraryInterface {
-  let snapshot: LibrarySnapshot = { templates: [], clauses: [] };
+  // The fallback library has nothing to fetch, so it's "bootstrapped" from
+  // creation — consumers don't need to wait for any IO.
+  let snapshot: LibrarySnapshot = { templates: [], clauses: [], bootstrapped: true };
 
   const listeners = new Set<() => void>();
   const notify = () => { for (const l of listeners) l(); };
@@ -101,6 +103,11 @@ export function createFallbackLibrary(documentId: string = '__fallback_doc__'): 
 
     async deleteClause(id) {
       commit({ ...snapshot, clauses: snapshot.clauses.filter(c => c.id !== id) });
+    },
+
+    dispose() {
+      // Nothing to release — the fallback library holds no IO resources.
+      listeners.clear();
     },
   };
 }
