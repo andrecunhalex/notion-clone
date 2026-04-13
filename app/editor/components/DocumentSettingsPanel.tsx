@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useMemo } from 'react';
-import { X, ChevronUp, ChevronDown, Upload, EyeOff, ImageIcon } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, Upload, EyeOff, ImageIcon, Library } from 'lucide-react';
 import { DocumentPageSettings, PageBackground, PAGE_PRESETS } from '../types';
+import { DesignBlockPicker } from './designBlocks/picker';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -20,6 +21,8 @@ interface DocumentSettingsPanelProps {
   onSectionNavPagesChange: (pages: boolean | number[]) => void;
   hasSections: boolean;
   uploadImage?: (file: File) => Promise<string | null>;
+  /** Used by the design library manager to split doc vs workspace scope */
+  currentDocumentId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -300,6 +303,37 @@ const SectionNavSection: React.FC<{
 // Settings content (shared between desktop and mobile)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Design library section — opens the DesignLibraryManager modal
+// ---------------------------------------------------------------------------
+
+const DesignLibrarySection: React.FC<{
+  currentDocumentId: string;
+  uploadImage?: (file: File) => Promise<string | null>;
+}> = ({ currentDocumentId, uploadImage }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Biblioteca de design</h4>
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:border-purple-300 hover:bg-purple-50/40 text-sm text-gray-700 transition-colors"
+      >
+        <Library size={14} className="text-purple-500 shrink-0" />
+        <span className="flex-1 text-left">Gerenciar biblioteca</span>
+      </button>
+      {open && (
+        // No onPick → manage mode (browse + CRUD only, no insertion)
+        <DesignBlockPicker
+          currentDocumentId={currentDocumentId}
+          onClose={() => setOpen(false)}
+          uploadImage={uploadImage}
+        />
+      )}
+    </div>
+  );
+};
+
 const SettingsContent: React.FC<{
   pageSettings: Required<DocumentPageSettings>;
   pageBackground?: PageBackground;
@@ -310,7 +344,8 @@ const SettingsContent: React.FC<{
   onSectionNavPagesChange: (pages: boolean | number[]) => void;
   hasSections: boolean;
   uploadImage?: (file: File) => Promise<string | null>;
-}> = ({ pageSettings, pageBackground, totalPages, onPageSettingsChange, onPageBackgroundChange, sectionNavPages, onSectionNavPagesChange, hasSections, uploadImage }) => {
+  currentDocumentId?: string;
+}> = ({ pageSettings, pageBackground, totalPages, onPageSettingsChange, onPageBackgroundChange, sectionNavPages, onSectionNavPagesChange, hasSections, uploadImage, currentDocumentId }) => {
   const activePreset = getActivePreset(pageSettings.width, pageSettings.height);
   const [isCustom, setIsCustom] = useState(!activePreset);
   const pageAspect = pageSettings.width / pageSettings.height;
@@ -385,6 +420,9 @@ const SettingsContent: React.FC<{
           onChange={onSectionNavPagesChange}
         />
       )}
+
+      {/* Design library */}
+      <DesignLibrarySection currentDocumentId={currentDocumentId ?? '__local__'} uploadImage={uploadImage} />
     </div>
   );
 };
@@ -397,7 +435,7 @@ export const DocumentSettingsPanel: React.FC<DocumentSettingsPanelProps> = ({
   isOpen, onToggle, pageSettings, pageBackground, totalPages,
   onPageSettingsChange, onPageBackgroundChange,
   sectionNavPages, onSectionNavPagesChange, hasSections,
-  uploadImage,
+  uploadImage, currentDocumentId,
 }) => {
   return (
     <>
@@ -430,6 +468,7 @@ export const DocumentSettingsPanel: React.FC<DocumentSettingsPanelProps> = ({
                 onSectionNavPagesChange={onSectionNavPagesChange}
                 hasSections={hasSections}
                 uploadImage={uploadImage}
+                currentDocumentId={currentDocumentId}
               />
             </div>
           )}

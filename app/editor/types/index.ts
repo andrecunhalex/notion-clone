@@ -327,4 +327,20 @@ export interface NotionEditorProps {
   commentUser?: CommentUser;
   /** Called when comment threads change */
   onCommentsChange?: (threads: CommentThread[]) => void;
+  /**
+   * Supabase-backed design library (reusable design blocks + clauses).
+   * When absent, the editor falls back to an in-memory library for local use.
+   */
+  designLibraryConfig?: DesignLibraryConfigInput;
+}
+
+/** Duplicate of `DesignLibraryConfig` from designLibrary/types — redefined
+ *  here to avoid a circular import between the editor types and the library.
+ *  Must stay in sync. */
+export interface DesignLibraryConfigInput {
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+  workspaceId: string;
+  documentId: string;
+  userId?: string;
 }

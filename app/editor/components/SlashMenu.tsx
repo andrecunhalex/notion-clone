@@ -3,21 +3,40 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { Type, Heading1, Heading2, Heading3, List, ListOrdered, Table, Minus, ImagePlus, LayoutTemplate, LucideIcon } from 'lucide-react';
 import { BlockType } from '../types';
-import { DESIGN_TEMPLATES, DesignBlockTemplate } from './designBlocks';
+import { DesignBlockPicker } from './designBlocks/picker';
+import type { PickerResult } from './designBlocks/picker';
 
 interface SlashMenuProps {
   x: number;
   y: number;
   close: () => void;
-  onSelect: (type: BlockType, templateId?: string) => void;
+  /**
+   * Unified selection callback.
+   * - For regular blocks: onSelect({ kind: 'block', type })
+   * - For a single design template: onSelect({ kind: 'block', type: 'design_block', templateId })
+   * - For a clause: onSelect({ kind: 'clause', clause: ... })
+   *
+   * Kept as a single entry point so the editor's insertion logic stays in
+   * one place.
+   */
+  onSelect: (sel: SlashSelection) => void;
+  /** Document id used by the picker to split "this doc" vs "workspace" sections */
+  currentDocumentId: string;
+  /** Forwarded to DesignBlock for inline image swaps in the clause editor */
+  uploadImage?: (file: File) => Promise<string | null>;
 }
+
+export type SlashSelection =
+  | { kind: 'block'; type: BlockType; templateId?: string }
+  | { kind: 'clause'; clauseId: string };
 
 interface MenuOption {
   type: BlockType;
   label: string;
   icon: LucideIcon;
   aliases: string[];
-  hasSubmenu?: boolean;
+  /** When true, selecting this option opens the Design library picker */
+  opensPicker?: boolean;
 }
 
 const MENU_OPTIONS: MenuOption[] = [
@@ -30,7 +49,7 @@ const MENU_OPTIONS: MenuOption[] = [
   { type: 'divider', label: 'Divisor', icon: Minus, aliases: ['divider', 'divisor', 'hr', 'linha', '---'] },
   { type: 'table', label: 'Tabela', icon: Table, aliases: ['table', 'tabela', 'grid'] },
   { type: 'image', label: 'Imagem', icon: ImagePlus, aliases: ['image', 'imagem', 'foto', 'picture', 'img'] },
-  { type: 'design_block', label: 'Design', icon: LayoutTemplate, aliases: ['design', 'template', 'bloco', 'card', 'callout'], hasSubmenu: true },
+  { type: 'design_block', label: 'Design', icon: LayoutTemplate, aliases: ['design', 'template', 'bloco', 'card', 'callout', 'clausula', 'clause', 'biblioteca'], opensPicker: true },
 ];
 
 const MENU_GAP_ABOVE = 22;
@@ -44,41 +63,30 @@ function matchesFilter(option: MenuOption, query: string): boolean {
   if (!query) return true;
   const q = normalize(query.trim());
   if (!q) return true;
-
   if (normalize(option.label).includes(q)) return true;
   if (normalize(option.type).includes(q)) return true;
   return option.aliases.some(alias => normalize(alias).includes(q));
 }
 
-/** Build a static preview HTML from a template, injecting default values */
-function buildPreviewHtml(tpl: DesignBlockTemplate): string {
-  const div = document.createElement('div');
-  div.innerHTML = tpl.html;
-  div.querySelectorAll<HTMLElement>('[data-editable]').forEach(el => {
-    const key = el.getAttribute('data-editable')!;
-    el.textContent = tpl.defaults[key] ?? '';
-    el.removeAttribute('data-editable');
-  });
-  div.querySelectorAll<HTMLElement>('[data-swappable]').forEach(el => {
-    const key = el.getAttribute('data-swappable')!;
-    if (el.tagName === 'IMG') (el as HTMLImageElement).src = tpl.defaults[key] ?? '';
-    el.removeAttribute('data-swappable');
-  });
-  return div.innerHTML;
-}
-
-export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) => {
-  const [selectedIndex, setSelectedIndex] = useState(0);
+export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect, currentDocumentId, uploadImage }) => {
+  // Derive selectedIndex from a resettable key (filter) so we avoid a
+  // setState-in-effect for the filter-change reset. The stored key is
+  // compared against the current filter on every render; a mismatch yields
+  // an index of 0 while the next user interaction repopulates the state.
   const [filter, setFilter] = useState('');
+  const [idxState, setIdxState] = useState<{ key: string; idx: number }>({ key: '', idx: 0 });
+  const selectedIndex = idxState.key === filter ? idxState.idx : 0;
+  const setSelectedIndex = useCallback((updater: number | ((prev: number) => number)) => {
+    setIdxState(prev => {
+      const currentIdx = prev.key === filter ? prev.idx : 0;
+      const nextIdx = typeof updater === 'function' ? updater(currentIdx) : updater;
+      return { key: filter, idx: nextIdx };
+    });
+  }, [filter]);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
-  const [showDesignSubmenu, setShowDesignSubmenu] = useState(false);
-  const [submenuPos, setSubmenuPos] = useState<{ left: number; top: number } | null>(null);
-  const [submenuIndex, setSubmenuIndex] = useState(0);
-  const [inSubmenu, setInSubmenu] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const submenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const designTriggerRef = useRef<HTMLButtonElement>(null);
 
   const filteredOptions = MENU_OPTIONS.filter(opt => matchesFilter(opt, filter));
 
@@ -89,15 +97,12 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
     const menuHeight = menuRect.height;
     const viewportHeight = window.innerHeight;
 
-    // y already includes +10 offset from Block.tsx, so cursor line is roughly at y - 10
     const cursorY = y - 10;
     const aboveTop = cursorY - menuHeight - MENU_GAP_ABOVE;
 
     if (aboveTop >= 0) {
-      // Fits fully above — prefer this
       setPosition({ left: x, top: aboveTop });
     } else {
-      // Doesn't fit above — open below the cursor
       const belowTop = cursorY + MENU_GAP_BELOW;
       if (belowTop + menuHeight > viewportHeight) {
         setPosition({ left: x, top: Math.max(0, viewportHeight - menuHeight - MENU_GAP_BELOW) });
@@ -107,14 +112,17 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
     }
   }, [x, y, filteredOptions.length]);
 
-  // Block page scroll while menu is open
+  // Block page scroll while menu is open. Allow scrolls inside the menu itself
+  // or inside any portaled child marked with [data-design-picker] (the design
+  // library picker modal) — otherwise the picker's internal scroll is killed.
   useEffect(() => {
     const origOverflow = document.documentElement.style.overflow;
     document.documentElement.style.overflow = 'hidden';
 
-    // Also prevent wheel/touch scroll on the page (but allow inside the menu)
     const preventScroll = (e: Event) => {
-      if (menuRef.current && menuRef.current.contains(e.target as Node)) return;
+      const target = e.target as Node | null;
+      if (menuRef.current && target && menuRef.current.contains(target)) return;
+      if (target instanceof Element && target.closest('[data-design-picker]')) return;
       e.preventDefault();
     };
     window.addEventListener('wheel', preventScroll, { passive: false });
@@ -127,114 +135,56 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
     };
   }, []);
 
-  // Reset selected index when filter changes
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [filter]);
 
   // Scroll selected item into view (inside the menu list)
   useEffect(() => {
     if (!listRef.current) return;
     const items = listRef.current.querySelectorAll('[data-menu-item]');
     const selected = items[selectedIndex] as HTMLElement;
-    if (selected) {
-      selected.scrollIntoView({ block: 'nearest' });
-    }
+    if (selected) selected.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
-  const handleSelect = useCallback((type: BlockType, templateId?: string) => {
-    onSelect(type, templateId);
+  const handleSelect = useCallback((opt: MenuOption) => {
+    if (opt.opensPicker) {
+      setPickerOpen(true);
+      return;
+    }
+    onSelect({ kind: 'block', type: opt.type });
   }, [onSelect]);
 
-  // Helper to open submenu and calculate position
-  const submenuRef = useRef<HTMLDivElement>(null);
-  const openSubmenu = useCallback(() => {
-    setShowDesignSubmenu(true);
-    setSubmenuIndex(0);
-    setInSubmenu(false);
-    // Position after render so we can measure the submenu height
-    requestAnimationFrame(() => {
-      if (!designTriggerRef.current) return;
-      const triggerRect = designTriggerRef.current.getBoundingClientRect();
-      const left = triggerRect.right + 4;
-      let top = triggerRect.top;
-      // After the submenu renders, adjust if it overflows the viewport
-      requestAnimationFrame(() => {
-        if (submenuRef.current) {
-          const subRect = submenuRef.current.getBoundingClientRect();
-          if (top + subRect.height > window.innerHeight - 8) {
-            top = Math.max(8, window.innerHeight - subRect.height - 8);
-          }
-          setSubmenuPos({ left, top });
-        } else {
-          setSubmenuPos({ left, top });
-        }
-      });
-    });
-  }, []);
+  const handlePickerResult = useCallback((result: PickerResult) => {
+    setPickerOpen(false);
+    if (result.kind === 'template') {
+      onSelect({ kind: 'block', type: 'design_block', templateId: result.template.id });
+    } else {
+      onSelect({ kind: 'clause', clauseId: result.clause.id });
+    }
+  }, [onSelect]);
 
-  // Keyboard navigation + filter building
+  // Keyboard navigation (disabled while picker is open — picker has its own)
   useEffect(() => {
+    if (pickerOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      // When inside the submenu
-      if (inSubmenu && showDesignSubmenu) {
-        if (e.key === 'ArrowDown') {
-          e.preventDefault(); e.stopPropagation();
-          setSubmenuIndex(prev => (prev + 1) % DESIGN_TEMPLATES.length);
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault(); e.stopPropagation();
-          setSubmenuIndex(prev => (prev - 1 + DESIGN_TEMPLATES.length) % DESIGN_TEMPLATES.length);
-        } else if (e.key === 'ArrowLeft' || e.key === 'Escape') {
-          e.preventDefault(); e.stopPropagation();
-          setInSubmenu(false);
-        } else if (e.key === 'Enter') {
-          e.preventDefault(); e.stopPropagation();
-          handleSelect('design_block', DESIGN_TEMPLATES[submenuIndex].id);
-        }
-        return;
-      }
-
       if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         setSelectedIndex(prev => (prev + 1) % (filteredOptions.length || 1));
       } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         setSelectedIndex(prev => (prev - 1 + (filteredOptions.length || 1)) % (filteredOptions.length || 1));
-      } else if (e.key === 'ArrowRight') {
-        // Open submenu if current item has one
-        const opt = filteredOptions[selectedIndex];
-        if (opt?.hasSubmenu) {
-          e.preventDefault(); e.stopPropagation();
-          openSubmenu();
-          setInSubmenu(true);
-        }
       } else if (e.key === 'Enter') {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         if (filteredOptions.length > 0) {
-          const opt = filteredOptions[selectedIndex] ?? filteredOptions[0];
-          if (opt.hasSubmenu) {
-            openSubmenu();
-            setInSubmenu(true);
-          } else {
-            handleSelect(opt.type);
-          }
+          handleSelect(filteredOptions[selectedIndex] ?? filteredOptions[0]);
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
         close();
       } else if (e.key === 'Backspace') {
-        if (filter.length > 0) {
-          setFilter(prev => prev.slice(0, -1));
-        } else {
-          close();
-        }
+        if (filter.length > 0) setFilter(prev => prev.slice(0, -1));
+        else close();
       } else if (e.key === ' ') {
         if (filter.endsWith(' ')) {
-          e.preventDefault();
-          e.stopPropagation();
+          e.preventDefault(); e.stopPropagation();
           close();
           return;
         }
@@ -245,10 +195,11 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [selectedIndex, filteredOptions, close, handleSelect, filter, inSubmenu, showDesignSubmenu, submenuIndex, openSubmenu]);
+  }, [selectedIndex, filteredOptions, close, handleSelect, filter, pickerOpen, setSelectedIndex]);
 
-  // Click outside closes
+  // Click outside closes (but only when picker is not open — picker handles its own)
   useEffect(() => {
+    if (pickerOpen) return;
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         close();
@@ -256,143 +207,76 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ x, y, close, onSelect }) =
     };
     window.addEventListener('mousedown', handleClick);
     return () => window.removeEventListener('mousedown', handleClick);
-  }, [close]);
+  }, [close, pickerOpen]);
 
   const headerText = filter ? 'Resultados filtrados' : 'Blocos Basicos';
 
   return (
-    <div
-      ref={menuRef}
-      className="fixed w-64 bg-white shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col"
-      style={{
-        left: position?.left ?? x,
-        top: position?.top ?? y,
-        visibility: position ? 'visible' : 'hidden',
-      }}
-      onMouseDown={e => {
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-      onClick={e => e.stopPropagation()}
-    >
-      {/* Header */}
-      <div className="px-3 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase">
-        {headerText}
-      </div>
-
-      {/* Scrollable list */}
+    <>
       <div
-        ref={listRef}
-        className="overflow-y-auto px-1"
-        style={{ maxHeight: '240px' }}
+        ref={menuRef}
+        className="fixed w-64 bg-white shadow-xl border border-gray-200 rounded-lg z-50 flex flex-col"
+        style={{
+          left: position?.left ?? x,
+          top: position?.top ?? y,
+          visibility: position ? 'visible' : 'hidden',
+        }}
+        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
+        onClick={e => e.stopPropagation()}
       >
-        {filteredOptions.length > 0 ? (
-          filteredOptions.map((opt, i) => (
-            <button
-              key={opt.type}
-              ref={opt.hasSubmenu ? designTriggerRef : undefined}
-              data-menu-item
-              onClick={() => {
-                if (opt.hasSubmenu) {
-                  setSelectedIndex(i);
-                  openSubmenu();
-                  setInSubmenu(true);
-                } else {
-                  handleSelect(opt.type);
-                }
-              }}
-              onMouseEnter={() => {
-                setSelectedIndex(i);
-                setInSubmenu(false);
-                if (opt.hasSubmenu) {
-                  if (submenuTimerRef.current) clearTimeout(submenuTimerRef.current);
-                  submenuTimerRef.current = setTimeout(() => openSubmenu(), 150);
-                } else {
-                  if (submenuTimerRef.current) clearTimeout(submenuTimerRef.current);
-                  setShowDesignSubmenu(false);
-                }
-              }}
-              className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded text-left transition-colors ${
-                i === selectedIndex
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <opt.icon size={16} />
-              <span className="flex-1">{opt.label}</span>
-              {opt.hasSubmenu && (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-50">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              )}
-            </button>
-          ))
-        ) : (
-          <div className="px-2 py-3 text-sm text-gray-400 text-center">
-            Nenhum resultado
-          </div>
-        )}
-      </div>
-
-      {/* Design templates submenu — rendered outside scroll area via fixed position */}
-      {showDesignSubmenu && (
-        <div
-          ref={submenuRef}
-          className="fixed w-64 bg-white shadow-xl border border-gray-200 rounded-lg py-1.5 z-60 overflow-y-auto"
-          style={{
-            left: submenuPos?.left ?? -9999,
-            top: submenuPos?.top ?? -9999,
-            maxHeight: 'calc(100vh - 16px)',
-            visibility: submenuPos ? 'visible' : 'hidden',
-          }}
-          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
-          onMouseEnter={() => {
-            if (submenuTimerRef.current) clearTimeout(submenuTimerRef.current);
-            setInSubmenu(true);
-          }}
-          onMouseLeave={() => {
-            setInSubmenu(false);
-            setShowDesignSubmenu(false);
-          }}
-        >
-          <div className="px-3 pb-1 text-xs font-semibold text-gray-400 uppercase">Templates</div>
-          {DESIGN_TEMPLATES.map((tpl, ti) => {
-            const previewHtml = buildPreviewHtml(tpl);
-            return (
-              <button
-                key={tpl.id}
-                onClick={() => handleSelect('design_block', tpl.id)}
-                onMouseEnter={() => { setSubmenuIndex(ti); setInSubmenu(true); }}
-                className={`flex flex-col gap-1 w-full px-2 py-1.5 text-left rounded mx-1 transition-colors ${
-                  inSubmenu && submenuIndex === ti
-                    ? 'bg-blue-50'
-                    : 'hover:bg-gray-50'
-                }`}
-                style={{ width: 'calc(100% - 8px)' }}
-              >
-                <span className="text-sm font-medium text-gray-700">{tpl.name}</span>
-                <div
-                  className="w-full rounded-md overflow-hidden border border-gray-100 pointer-events-none bg-white px-2 py-1.5"
-                  style={{ transform: 'scale(0.75)', transformOrigin: 'top left', maxHeight: 60, width: '133%' }}
-                  dangerouslySetInnerHTML={{ __html: previewHtml }}
-                />
-              </button>
-            );
-          })}
+        {/* Header */}
+        <div className="px-3 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase">
+          {headerText}
         </div>
-      )}
 
-      {/* Footer: close button */}
-      <div className="border-t border-gray-100 px-1 py-1">
-        <button
-          onClick={close}
-          className="flex items-center justify-between w-full px-2 py-1.5 text-sm text-gray-700 rounded hover:bg-gray-50 transition-colors"
-        >
-          <span>Fechar menu</span>
-          <kbd className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">esc</kbd>
-        </button>
+        {/* Scrollable list */}
+        <div ref={listRef} className="overflow-y-auto px-1" style={{ maxHeight: '240px' }}>
+          {filteredOptions.length > 0 ? (
+            filteredOptions.map((opt, i) => (
+              <button
+                key={opt.type}
+                data-menu-item
+                onClick={() => handleSelect(opt)}
+                onMouseEnter={() => setSelectedIndex(i)}
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded text-left transition-colors ${
+                  i === selectedIndex ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <opt.icon size={16} />
+                <span className="flex-1">{opt.label}</span>
+                {opt.opensPicker && (
+                  <span className="text-[10px] text-gray-400 uppercase tracking-wide">Biblioteca</span>
+                )}
+              </button>
+            ))
+          ) : (
+            <div className="px-2 py-3 text-sm text-gray-400 text-center">
+              Nenhum resultado
+            </div>
+          )}
+        </div>
+
+        {/* Footer: close button */}
+        <div className="border-t border-gray-100 px-1 py-1">
+          <button
+            onClick={close}
+            className="flex items-center justify-between w-full px-2 py-1.5 text-sm text-gray-700 rounded hover:bg-gray-50 transition-colors"
+          >
+            <span>Fechar menu</span>
+            <kbd className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">esc</kbd>
+          </button>
+        </div>
       </div>
-    </div>
+
+      {pickerOpen && (
+        <DesignBlockPicker
+          currentDocumentId={currentDocumentId}
+          onPick={handlePickerResult}
+          onClose={() => setPickerOpen(false)}
+          uploadImage={uploadImage}
+        />
+      )}
+    </>
   );
 };
 
