@@ -172,11 +172,18 @@ const NotionEditorInner: React.FC<{
   }, [redoRaw, setSelectedIds, readOnly]);
 
   // Restore handler for version history — uses restoreInProgressRef to bypass the overlay guard
-  const handleVersionRestore = useCallback((restoredBlocks: BlockData[]) => {
+  const handleVersionRestore = useCallback((restoredBlocks: BlockData[], restoredMeta: Record<string, unknown>) => {
     restoreInProgressRef.current = true;
     setBlocks(restoredBlocks);
+    // Build a faithful meta patch: every key present in either the current meta or the
+    // restored meta ends up with the restored value (or undefined, if the key was dropped).
+    // This ensures page settings, margins, background images, fonts, etc. are fully reverted.
+    const patch: Record<string, unknown> = {};
+    for (const k of Object.keys(meta)) patch[k] = undefined;
+    for (const k of Object.keys(restoredMeta)) patch[k] = restoredMeta[k];
+    setMeta(patch);
     restoreInProgressRef.current = false;
-  }, [setBlocks]);
+  }, [setBlocks, setMeta, meta]);
 
   const { blockHeights, handleHeightChange, ready: paginationReady } = usePagination({ blocks, setBlocks, viewMode, pageContentHeight });
 

@@ -232,7 +232,7 @@ interface VersionHistoryOverlayProps {
   currentBlocks: BlockData[];
   documentFont: string;
   documentFontSize: number;
-  onRestore: (blocks: BlockData[]) => void;
+  onRestore: (blocks: BlockData[], meta: Record<string, unknown>) => void;
   /** Pass through the editor config for page dimensions, fonts, etc. */
   editorConfig?: import('../types').EditorConfig;
   /** Current document meta (for pageBackground, documentSettings, etc.) */
@@ -305,8 +305,8 @@ export const VersionHistoryOverlay: React.FC<VersionHistoryOverlayProps> = ({
   const [mobileTab, setMobileTab] = useState<'version' | 'current'>('version');
 
   const handleRestore = useCallback(() => {
-    const blocks = restore();
-    if (blocks) { onRestore(blocks); close(); }
+    const result = restore();
+    if (result) { onRestore(result.blocks, result.meta); close(); }
   }, [restore, onRestore, close]);
 
   const headerDate = selectedVersion ? formatFullDate(selectedVersion.created_at) : 'Versão atual';

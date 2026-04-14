@@ -26,7 +26,7 @@ export interface UseVersionHistoryReturn {
   loading: boolean;
   selectedVersion: DocumentVersion | null;
   selectVersion: (v: DocumentVersion | null) => void;
-  restore: () => BlockData[] | null;
+  restore: () => { blocks: BlockData[]; meta: Record<string, unknown> } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -150,14 +150,14 @@ export function useVersionHistory({
   }, []);
 
   // --- Restore ---
-  const restore = useCallback((): BlockData[] | null => {
+  const restore = useCallback((): { blocks: BlockData[]; meta: Record<string, unknown> } | null => {
     if (!selectedVersion) return null;
-    return selectedVersion.blocks;
+    return { blocks: selectedVersion.blocks, meta: selectedVersion.meta || {} };
   }, [selectedVersion]);
 
   // --- No-op return when unavailable ---
   const noop = useCallback(() => {}, []);
-  const noopRestore = useCallback(() => null, []);
+  const noopRestore = useCallback((): null => null, []);
 
   if (!available) {
     return {
