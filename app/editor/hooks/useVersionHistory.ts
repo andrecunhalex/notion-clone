@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { BlockData, DocumentVersion, VersionHistoryCollabConfig } from '../types';
 import { getSupabaseClient } from '../collaboration/supabase-client';
 

@@ -36,8 +36,60 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
 
   // Heights accumulate in a ref (zero re-renders) and are flushed to state once per frame
   const heightsRef = useRef<Record<string, number>>({});
+  // measuredRef: initial heights have been collected (enables overflow split effect).
+  // readyRef: layout has stabilized (no pending splits/reflows) — controls opacity gate.
+  const measuredRef = useRef(false);
   const readyRef = useRef(false);
   const flushRaf = useRef(0);
+  const quietRaf = useRef(0);
+  const quietCount = useRef(0);
+  const safetyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Safety deadline: no matter what, flip `ready` after this many ms so the
+  // editor never gets stuck invisible if layout never converges.
+  const SAFETY_MS = 1000;
+  const forceReady = useCallback(() => {
+    if (readyRef.current) return;
+    if (quietRaf.current) { cancelAnimationFrame(quietRaf.current); quietRaf.current = 0; }
+    if (safetyTimeout.current) { clearTimeout(safetyTimeout.current); safetyTimeout.current = null; }
+    readyRef.current = true;
+    // Ensure we show the latest heights even if a flush was pending.
+    setBlockHeights({ ...heightsRef.current });
+    setReady(true);
+  }, []);
+
+  // After the initial flush, layout may still shift as the overflow-split effect
+  // breaks long blocks into pages (each split → setBlocks → new ROs → new flush).
+  // Instead of flipping `ready` as soon as heights arrive, we wait for a few
+  // consecutive "quiet" frames — no height flushes, no splits — before revealing
+  // the editor. This eliminates the visible "jumping" during initial pagination.
+  const QUIET_FRAMES = 3;
+  const armQuietCheck = useCallback(() => {
+    if (readyRef.current) return;
+    if (quietRaf.current) cancelAnimationFrame(quietRaf.current);
+    quietCount.current = 0;
+    const tick = () => {
+      if (flushRaf.current) {
+        // A flush is pending — restart the count after it lands.
+        quietCount.current = 0;
+      } else {
+        quietCount.current++;
+      }
+      if (quietCount.current >= QUIET_FRAMES) {
+        quietRaf.current = 0;
+        if (safetyTimeout.current) { clearTimeout(safetyTimeout.current); safetyTimeout.current = null; }
+        readyRef.current = true;
+        setReady(true);
+        return;
+      }
+      quietRaf.current = requestAnimationFrame(tick);
+    };
+    quietRaf.current = requestAnimationFrame(tick);
+    // Arm (once) the absolute deadline — if quiet frames never happen, force show.
+    if (!safetyTimeout.current) {
+      safetyTimeout.current = setTimeout(forceReady, SAFETY_MS);
+    }
+  }, [forceReady]);
 
   const handleHeightChange = useCallback((id: string, height: number) => {
     // Skip if unchanged — avoids unnecessary RAF scheduling
@@ -45,29 +97,48 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
     if (prev === height) return;
     heightsRef.current[id] = height;
 
-    if (!readyRef.current) {
-      // FIRST MOUNT: schedule a single RAF. Browsers fire all ResizeObserver
-      // callbacks synchronously before the next paint, so by the time this RAF
-      // runs, every block will have reported its height. Result: one flush,
-      // one render, zero flicker.
+    if (!measuredRef.current) {
+      // FIRST MOUNT: wait for (a) ResizeObservers to settle in this frame AND
+      // (b) web fonts to finish loading, then flip `measured` so the split
+      // effect can run. `ready` is still false — the quiet-frame check below
+      // will flip it once splits converge.
       if (!flushRaf.current) {
-        flushRaf.current = requestAnimationFrame(() => {
+        flushRaf.current = 1; // non-zero sentinel so concurrent calls don't re-schedule
+        const finalize = () => {
           flushRaf.current = 0;
-          readyRef.current = true;
+          measuredRef.current = true;
           setBlockHeights({ ...heightsRef.current });
-          setReady(true);
+          armQuietCheck();
+        };
+        requestAnimationFrame(() => {
+          const fontsReady = (typeof document !== 'undefined' && document.fonts?.ready)
+            ? document.fonts.ready
+            : Promise.resolve();
+          fontsReady.then(() => {
+            requestAnimationFrame(finalize);
+          });
         });
       }
       return;
     }
 
-    // STEADY STATE: batch all height changes within a frame into one setState
+    // STEADY STATE: batch all height changes within a frame into one setState.
+    // If we're still stabilizing (ready=false), re-arm the quiet check — any
+    // new flush means layout hasn't settled yet.
     if (!flushRaf.current) {
       flushRaf.current = requestAnimationFrame(() => {
         flushRaf.current = 0;
         setBlockHeights({ ...heightsRef.current });
+        if (!readyRef.current) armQuietCheck();
       });
     }
+  }, [armQuietCheck]);
+
+  // Cancel pending timers on unmount
+  useEffect(() => () => {
+    if (quietRaf.current) cancelAnimationFrame(quietRaf.current);
+    if (flushRaf.current && flushRaf.current !== 1) cancelAnimationFrame(flushRaf.current);
+    if (safetyTimeout.current) clearTimeout(safetyTimeout.current);
   }, []);
 
   // --- Overflow Split: auto-break text blocks that exceed page height ---
@@ -78,7 +149,7 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
 
   // Overflow split (text blocks that exceed page height)
   useEffect(() => {
-    if (viewMode !== 'paginated' || !readyRef.current) return;
+    if (viewMode !== 'paginated' || !measuredRef.current) return;
 
     let currentH = 0;
     let splitAction: { id: string; splitPoint: number } | null = null;
