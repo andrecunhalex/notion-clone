@@ -748,6 +748,11 @@ const NotionEditorInner: React.FC<{
         onToggleSectionPanel={() => setSectionPanelOpen(prev => !prev)}
         onOpenVersionHistory={versionHistory.available ? versionHistory.open : undefined}
         onToggleSettings={() => setSettingsPanelOpen(prev => !prev)}
+        blocks={blocks}
+        updateBlock={updateBlock}
+        setBlocks={setBlocks}
+        selectedBlockIds={selectedIds}
+        scrollRef={scrollRef}
       />}
 
       {/* Scroll container — takes all remaining space below toolbar (flex-1).
