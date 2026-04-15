@@ -12,7 +12,8 @@ export const useSelection = ({ blocks, containerRef, blockRefs }: UseSelectionPr
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
 
   const blocksRef = useRef(blocks);
-  useEffect(() => { blocksRef.current = blocks; });
+  // eslint-disable-next-line react-hooks/refs
+  blocksRef.current = blocks;
 
   const drag = useRef({ active: false, startX: 0, startY: 0, moved: false });
   const rafId = useRef(0);

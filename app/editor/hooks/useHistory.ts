@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 interface HistoryEntry<T> {
   state: T;
@@ -26,11 +26,15 @@ export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBO
   ]);
   const [pointer, setPointer] = useState(0);
 
-  // Use refs to avoid stale closures in rapid successive calls
+  // Refs must stay in sync with state *during render* so that rapid successive
+  // edits (e.g. keystroke → Enter within the same commit) always read the latest
+  // history state. useEffect sync lags by one render and breaks that flow.
   const pointerRef = useRef(0);
   const historyRef = useRef<HistoryEntry<T>[]>([{ state: initialState, selectedIds: [] }]);
-  useEffect(() => { pointerRef.current = pointer; });
-  useEffect(() => { historyRef.current = history; });
+  // eslint-disable-next-line react-hooks/refs
+  pointerRef.current = pointer;
+  // eslint-disable-next-line react-hooks/refs
+  historyRef.current = history;
 
   // Debounce: track last edit time to merge rapid changes
   const lastEditTime = useRef(0);
@@ -41,7 +45,8 @@ export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBO
 
   // Ref to read current state synchronously for updater functions
   const stateRef = useRef(initialState);
-  useEffect(() => { stateRef.current = state; });
+  // eslint-disable-next-line react-hooks/refs
+  stateRef.current = state;
 
   const set = useCallback((newStateOrFn: SetArg<T>, currentSelectedIds: string[] = []) => {
     const newState = typeof newStateOrFn === 'function'

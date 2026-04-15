@@ -70,8 +70,10 @@ export const useComments = ({ enabled, user, collabConfig, onChange }: UseCommen
   const activeThreadIdRef = useRef(activeThreadId);
   const [pendingComment, setPendingComment] = useState<PendingComment | null>(null);
   const onChangeRef = useRef(onChange);
-  useEffect(() => { activeThreadIdRef.current = activeThreadId; });
-  useEffect(() => { onChangeRef.current = onChange; });
+  /* eslint-disable react-hooks/refs */
+  activeThreadIdRef.current = activeThreadId;
+  onChangeRef.current = onChange;
+  /* eslint-enable react-hooks/refs */
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
 

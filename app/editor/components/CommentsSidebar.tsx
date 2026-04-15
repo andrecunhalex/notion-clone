@@ -667,11 +667,11 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = memo(({ comments,
   const activeThreadsRef = useRef(activeThreads);
   const pendingRef = useRef(pendingComment);
   const activeIdRef = useRef(activeThreadId);
-  useEffect(() => {
-    activeThreadsRef.current = activeThreads;
-    pendingRef.current = pendingComment;
-    activeIdRef.current = activeThreadId;
-  });
+  /* eslint-disable react-hooks/refs */
+  activeThreadsRef.current = activeThreads;
+  pendingRef.current = pendingComment;
+  activeIdRef.current = activeThreadId;
+  /* eslint-enable react-hooks/refs */
 
   const applyDecorations = useCallback(() => {
     const scrollEl = scrollRef.current;

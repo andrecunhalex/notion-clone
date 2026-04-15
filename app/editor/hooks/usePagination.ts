@@ -145,7 +145,8 @@ export const usePagination = ({ blocks, setBlocks, viewMode, pageContentHeight }
   // Guard against infinite loops: skip if we just split this block
   const lastSplitRef = useRef<string | null>(null);
   const setBlocksRef = useRef(setBlocks);
-  useEffect(() => { setBlocksRef.current = setBlocks; });
+  // eslint-disable-next-line react-hooks/refs
+  setBlocksRef.current = setBlocks;
 
   // Overflow split (text blocks that exceed page height)
   useEffect(() => {

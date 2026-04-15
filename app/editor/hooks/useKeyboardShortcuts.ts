@@ -17,25 +17,18 @@ export const useKeyboardShortcuts = ({
   blocks, setBlocks, selectedIds, setSelectedIds,
   undo, redo, handleCopy, handlePaste,
 }: UseKeyboardShortcutsProps) => {
-  // Use refs to avoid re-attaching listeners on every state change
-  const blocksRef = useRef(blocks);
-  const selectedIdsRef = useRef(selectedIds);
-  const setBlocksRef = useRef(setBlocks);
-  const setSelectedIdsRef = useRef(setSelectedIds);
-  const undoRef = useRef(undo);
-  const redoRef = useRef(redo);
-  const handleCopyRef = useRef(handleCopy);
-  const handlePasteRef = useRef(handlePaste);
-  useEffect(() => {
-    blocksRef.current = blocks;
-    selectedIdsRef.current = selectedIds;
-    setBlocksRef.current = setBlocks;
-    setSelectedIdsRef.current = setSelectedIds;
-    undoRef.current = undo;
-    redoRef.current = redo;
-    handleCopyRef.current = handleCopy;
-    handlePasteRef.current = handlePaste;
-  });
+  // Use refs to avoid re-attaching listeners on every state change.
+  // Synced during render so event handlers always see the latest closures.
+  /* eslint-disable react-hooks/refs */
+  const blocksRef = useRef(blocks); blocksRef.current = blocks;
+  const selectedIdsRef = useRef(selectedIds); selectedIdsRef.current = selectedIds;
+  const setBlocksRef = useRef(setBlocks); setBlocksRef.current = setBlocks;
+  const setSelectedIdsRef = useRef(setSelectedIds); setSelectedIdsRef.current = setSelectedIds;
+  const undoRef = useRef(undo); undoRef.current = undo;
+  const redoRef = useRef(redo); redoRef.current = redo;
+  const handleCopyRef = useRef(handleCopy); handleCopyRef.current = handleCopy;
+  const handlePasteRef = useRef(handlePaste); handlePasteRef.current = handlePaste;
+  /* eslint-enable react-hooks/refs */
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

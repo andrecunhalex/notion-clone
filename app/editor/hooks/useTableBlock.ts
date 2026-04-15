@@ -38,11 +38,11 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
   const selectedCellsRef = useRef(selectedCells);
   const rowsRef = useRef(rows);
   const colCountRef = useRef(columnWidths.length);
-  useEffect(() => {
-    selectedCellsRef.current = selectedCells;
-    rowsRef.current = rows;
-    colCountRef.current = columnWidths.length;
-  });
+  /* eslint-disable react-hooks/refs */
+  selectedCellsRef.current = selectedCells;
+  rowsRef.current = rows;
+  colCountRef.current = columnWidths.length;
+  /* eslint-enable react-hooks/refs */
 
   // Reset selection refs when selection is cleared
   useEffect(() => {
@@ -212,10 +212,10 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
 
   const clearRef = useRef(clearCellContents);
   const computeRectRef = useRef(computeRect);
-  useEffect(() => {
-    clearRef.current = clearCellContents;
-    computeRectRef.current = computeRect;
-  });
+  /* eslint-disable react-hooks/refs */
+  clearRef.current = clearCellContents;
+  computeRectRef.current = computeRect;
+  /* eslint-enable react-hooks/refs */
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

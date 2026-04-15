@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { BlockData, BlockType } from '../types';
 import { generateId, focusBlock } from '../utils';
 
@@ -8,11 +8,16 @@ interface UseBlockManagerProps {
 }
 
 export const useBlockManager = ({ blocks, setBlocks }: UseBlockManagerProps) => {
-  // Use refs to avoid stale closures — callbacks stay stable
+  // Refs must be synced *during render* so stable callbacks (useCallback []) always
+  // see the latest blocks/setBlocks even when invoked from inside the same render
+  // cycle that changed them (e.g. Enter after typing in one keystroke batch).
+  // Moving this to useEffect breaks fast-sequence edits like keystroke+Enter.
   const blocksRef = useRef(blocks);
   const setBlocksRef = useRef(setBlocks);
-  useEffect(() => { blocksRef.current = blocks; });
-  useEffect(() => { setBlocksRef.current = setBlocks; });
+  // eslint-disable-next-line react-hooks/refs
+  blocksRef.current = blocks;
+  // eslint-disable-next-line react-hooks/refs
+  setBlocksRef.current = setBlocks;
 
   const updateBlock = useCallback((id: string, updates: Partial<BlockData>) => {
     const newBlocks = blocksRef.current.map(b => b.id === id ? { ...b, ...updates } : b);
