@@ -105,6 +105,10 @@ const NotionEditorInner: React.FC<{
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const blockRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const registerBlockRef = useCallback((id: string, el: HTMLDivElement | null) => {
+    if (el) blockRefs.current[id] = el;
+    else delete blockRefs.current[id];
+  }, []);
 
   const navConfig = config.sectionNav || {};
   const {
@@ -846,7 +850,7 @@ const NotionEditorInner: React.FC<{
                     removeBlock={removeBlock}
                     mergeWithPrevious={mergeWithPrevious}
                     setSlashMenu={setSlashMenu}
-                    blockRef={el => (blockRefs.current[block.id] = el)}
+                    registerBlockRef={registerBlockRef}
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
                     onDrop={handleDrop}

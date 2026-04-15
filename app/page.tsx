@@ -44,9 +44,6 @@ export default function Home() {
           defaultImage: 'https://yiqxeiqsfmbiwycfjxaq.supabase.co/storage/v1/object/public/images/uploads/1761055623347_CapaDemo.png',
         },
       }}
-      onChange={(blocks) => {
-        console.log('Blocos atualizados:', blocks.length);
-      }}
     />
   );
 }

@@ -68,10 +68,10 @@ export const useComments = ({ enabled, user, collabConfig, onChange }: UseCommen
   const [threads, setThreads] = useState<CommentThread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const activeThreadIdRef = useRef(activeThreadId);
-  activeThreadIdRef.current = activeThreadId;
   const [pendingComment, setPendingComment] = useState<PendingComment | null>(null);
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  useEffect(() => { activeThreadIdRef.current = activeThreadId; });
+  useEffect(() => { onChangeRef.current = onChange; });
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
 

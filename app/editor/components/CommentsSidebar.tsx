@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback, useLayoutEffect, useMemo, memo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect, useMemo, useSyncExternalStore, memo } from 'react';
 import { Check, MoreVertical, Trash2, X } from 'lucide-react';
 import type { CommentThread, CommentEntry } from '../types';
 import type { UseCommentsReturn, PendingComment } from '../hooks/useComments';
@@ -29,18 +29,20 @@ function formatTime(iso: string): string {
 // Simple mobile detection hook (matches Tailwind lg: 1024px)
 // ---------------------------------------------------------------------------
 
+const MOBILE_QUERY = '(max-width: 1023px)';
+function subscribeMobile(cb: () => void) {
+  const mq = window.matchMedia(MOBILE_QUERY);
+  mq.addEventListener('change', cb);
+  return () => mq.removeEventListener('change', cb);
+}
+function getMobileSnapshot() {
+  return window.matchMedia(MOBILE_QUERY).matches;
+}
+function getMobileServerSnapshot() {
+  return false;
+}
 function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth < 1024 : false
-  );
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 1023px)');
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener('change', handler);
-    setIsMobile(mq.matches);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-  return isMobile;
+  return useSyncExternalStore(subscribeMobile, getMobileSnapshot, getMobileServerSnapshot);
 }
 
 // ---------------------------------------------------------------------------
@@ -371,6 +373,8 @@ const DesktopThreadCard: React.FC<{
     return toAbsolutePos(spanRect, scrollEl, pageDiv, CARD_WIDTH);
   }, [thread.id, scrollRef]);
 
+  // DOM-measurement state: setState in layout effect is intentional
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useLayoutEffect(() => { setPos(computePos()); }, [computePos]);
 
   useEffect(() => {
@@ -534,7 +538,11 @@ const DesktopNewComment: React.FC<{
   useLayoutEffect(() => {
     try {
       const scrollEl = scrollRef.current;
-      if (!scrollEl) { setPos(null); return; }
+      if (!scrollEl) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setPos(null);
+        return;
+      }
 
       // Try positioning from the original range
       let rect = pending.range.getBoundingClientRect();
@@ -657,11 +665,13 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = memo(({ comments,
   const [bubblePositions, setBubblePositions] = useState<Map<string, { top: number; left: number }>>(new Map());
   const observerRef = useRef<MutationObserver | null>(null);
   const activeThreadsRef = useRef(activeThreads);
-  activeThreadsRef.current = activeThreads;
   const pendingRef = useRef(pendingComment);
-  pendingRef.current = pendingComment;
   const activeIdRef = useRef(activeThreadId);
-  activeIdRef.current = activeThreadId;
+  useEffect(() => {
+    activeThreadsRef.current = activeThreads;
+    pendingRef.current = pendingComment;
+    activeIdRef.current = activeThreadId;
+  });
 
   const applyDecorations = useCallback(() => {
     const scrollEl = scrollRef.current;
@@ -741,6 +751,8 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = memo(({ comments,
 
   // Apply decorations synchronously after render (before paint)
   useLayoutEffect(() => {
+    // DOM-measurement state: setBubblePositions inside applyDecorations is intentional
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     applyDecorations();
   }, [activeThreads, pendingComment, activeThreadId, applyDecorations]);
 

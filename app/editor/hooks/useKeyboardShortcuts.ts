@@ -19,21 +19,23 @@ export const useKeyboardShortcuts = ({
 }: UseKeyboardShortcutsProps) => {
   // Use refs to avoid re-attaching listeners on every state change
   const blocksRef = useRef(blocks);
-  blocksRef.current = blocks;
   const selectedIdsRef = useRef(selectedIds);
-  selectedIdsRef.current = selectedIds;
   const setBlocksRef = useRef(setBlocks);
-  setBlocksRef.current = setBlocks;
   const setSelectedIdsRef = useRef(setSelectedIds);
-  setSelectedIdsRef.current = setSelectedIds;
   const undoRef = useRef(undo);
-  undoRef.current = undo;
   const redoRef = useRef(redo);
-  redoRef.current = redo;
   const handleCopyRef = useRef(handleCopy);
-  handleCopyRef.current = handleCopy;
   const handlePasteRef = useRef(handlePaste);
-  handlePasteRef.current = handlePaste;
+  useEffect(() => {
+    blocksRef.current = blocks;
+    selectedIdsRef.current = selectedIds;
+    setBlocksRef.current = setBlocks;
+    setSelectedIdsRef.current = setSelectedIds;
+    undoRef.current = undo;
+    redoRef.current = redo;
+    handleCopyRef.current = handleCopy;
+    handlePasteRef.current = handlePaste;
+  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -55,7 +57,7 @@ export const useKeyboardShortcuts = ({
         const blockWrapper = active?.closest?.('[data-block-id]');
         const focusedBlockId = blockWrapper?.getAttribute('data-block-id') || null;
 
-        e.shiftKey ? redoRef.current() : undoRef.current();
+        if (e.shiftKey) redoRef.current(); else undoRef.current();
 
         // Re-focus the block after React re-render (if it still exists)
         if (focusedBlockId) {

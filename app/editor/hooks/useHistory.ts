@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 interface HistoryEntry<T> {
   state: T;
@@ -29,8 +29,8 @@ export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBO
   // Use refs to avoid stale closures in rapid successive calls
   const pointerRef = useRef(0);
   const historyRef = useRef<HistoryEntry<T>[]>([{ state: initialState, selectedIds: [] }]);
-  pointerRef.current = pointer;
-  historyRef.current = history;
+  useEffect(() => { pointerRef.current = pointer; });
+  useEffect(() => { historyRef.current = history; });
 
   // Debounce: track last edit time to merge rapid changes
   const lastEditTime = useRef(0);
@@ -41,7 +41,7 @@ export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBO
 
   // Ref to read current state synchronously for updater functions
   const stateRef = useRef(initialState);
-  stateRef.current = state;
+  useEffect(() => { stateRef.current = state; });
 
   const set = useCallback((newStateOrFn: SetArg<T>, currentSelectedIds: string[] = []) => {
     const newState = typeof newStateOrFn === 'function'
@@ -104,7 +104,7 @@ export const useHistory = <T>(initialState: T, debounceMs: number = DEFAULT_DEBO
     });
     stateRef.current = newState;
     setState(newState);
-  }, []);
+  }, [debounceMs]);
 
   const undo = useCallback((): string[] => {
     // Stop debouncing so next edit starts a fresh entry

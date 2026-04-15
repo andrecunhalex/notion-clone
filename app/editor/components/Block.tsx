@@ -42,7 +42,7 @@ interface BlockProps {
   removeBlock: (id: string) => void;
   mergeWithPrevious: (id: string) => void;
   setSlashMenu: Dispatch<SetStateAction<SlashMenuState>>;
-  blockRef: (el: HTMLDivElement | null) => void;
+  registerBlockRef: (id: string, el: HTMLDivElement | null) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDragOver: (e: React.DragEvent, id: string) => void;
   onDrop: (e: React.DragEvent) => void;
@@ -105,7 +105,7 @@ const BlockInner: React.FC<BlockProps> = ({
   removeBlock,
   mergeWithPrevious,
   setSlashMenu,
-  blockRef,
+  registerBlockRef,
   onDragStart,
   onDragOver,
   onDrop,
@@ -124,32 +124,29 @@ const BlockInner: React.FC<BlockProps> = ({
   const isLocalEditRef = useRef(false);
 
   useEffect(() => {
-    if (internalRef.current) {
-      blockRef(internalRef.current);
+    const el = internalRef.current;
+    if (!el) return;
+    registerBlockRef(block.id, el);
 
-      const el = internalRef.current;
+    const ro = new ResizeObserver(() => {
+      if (el.querySelector('[data-resizing]')) return;
+      onHeightChange(block.id, el.offsetHeight);
+    });
+    ro.observe(el);
 
-      const ro = new ResizeObserver(() => {
-        if (el) {
-          // Skip during image resize to prevent pagination from moving
-          // the block mid-drag. Height is reported on resize end via MutationObserver.
-          if (el.querySelector('[data-resizing]')) return;
-          onHeightChange(block.id, el.offsetHeight);
-        }
-      });
-      ro.observe(el);
+    const mo = new MutationObserver(() => {
+      if (!el.querySelector('[data-resizing]')) {
+        onHeightChange(block.id, el.offsetHeight);
+      }
+    });
+    mo.observe(el, { subtree: true, attributes: true, attributeFilter: ['data-resizing'] });
 
-      // When data-resizing is removed (resize ends), report the final height
-      const mo = new MutationObserver(() => {
-        if (el && !el.querySelector('[data-resizing]')) {
-          onHeightChange(block.id, el.offsetHeight);
-        }
-      });
-      mo.observe(el, { subtree: true, attributes: true, attributeFilter: ['data-resizing'] });
-
-      return () => { ro.disconnect(); mo.disconnect(); };
-    }
-  }, [block.id, onHeightChange, blockRef]);
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      registerBlockRef(block.id, null);
+    };
+  }, [block.id, onHeightChange, registerBlockRef]);
 
   // Sync is-empty class with content
   useEffect(() => {

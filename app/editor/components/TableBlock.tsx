@@ -60,6 +60,7 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
 
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMenuPos(null);
       return;
     }
@@ -85,6 +86,7 @@ const TableBlockInner: React.FC<TableBlockProps> = (props) => {
 
   useLayoutEffect(() => {
     if (!colorSubmenu || !colorMenuRef.current || !contextMenuRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setColorMenuPos(null);
       return;
     }

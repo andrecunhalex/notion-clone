@@ -112,11 +112,13 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ block, updateBlock, remo
   }, [imageData.width]);
 
   const alignmentRef = useRef(imageData.alignment);
-  alignmentRef.current = imageData.alignment;
   const updateRef = useRef(update);
-  updateRef.current = update;
   const resizeWidthRef = useRef(resizeWidth);
-  resizeWidthRef.current = resizeWidth;
+  useEffect(() => {
+    alignmentRef.current = imageData.alignment;
+    updateRef.current = update;
+    resizeWidthRef.current = resizeWidth;
+  });
 
   useEffect(() => {
     if (!isResizing) return;

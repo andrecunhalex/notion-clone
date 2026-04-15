@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useEffect, useState, useRef, useCallback } from 'react';
+import React, { memo, useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
 import { RemoteUser } from './types';
 
 // ---------------------------------------------------------------------------
@@ -159,10 +159,12 @@ const RemoteUserCursor: React.FC<{
   }, [user.cursor, scrollRef]);
 
   // Recompute when cursor position changes
-  useEffect(() => {
+  useLayoutEffect(() => {
     const cursorKey = JSON.stringify(user.cursor);
     if (cursorKey === prevCursorRef.current) return;
     prevCursorRef.current = cursorKey;
+    // DOM-measurement state: intentional layout-effect setState via computeVisuals
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     computeVisuals();
   }, [user.cursor, computeVisuals]);
 

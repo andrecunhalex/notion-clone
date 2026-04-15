@@ -36,11 +36,13 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
   const selectionCursor = useRef<CellCoord | null>(null);
   const isMouseDown = useRef(false);
   const selectedCellsRef = useRef(selectedCells);
-  selectedCellsRef.current = selectedCells;
   const rowsRef = useRef(rows);
-  rowsRef.current = rows;
   const colCountRef = useRef(columnWidths.length);
-  colCountRef.current = columnWidths.length;
+  useEffect(() => {
+    selectedCellsRef.current = selectedCells;
+    rowsRef.current = rows;
+    colCountRef.current = columnWidths.length;
+  });
 
   // Reset selection refs when selection is cleared
   useEffect(() => {
@@ -209,9 +211,11 @@ export const useTableBlock = ({ block, updateBlock, onNavigateOut }: UseTableBlo
   // --- Keyboard for selected cells (not editing) ---
 
   const clearRef = useRef(clearCellContents);
-  clearRef.current = clearCellContents;
   const computeRectRef = useRef(computeRect);
-  computeRectRef.current = computeRect;
+  useEffect(() => {
+    clearRef.current = clearCellContents;
+    computeRectRef.current = computeRect;
+  });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

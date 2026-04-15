@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { BlockData, BlockType } from '../types';
 import { generateId, focusBlock } from '../utils';
 
@@ -10,9 +10,9 @@ interface UseBlockManagerProps {
 export const useBlockManager = ({ blocks, setBlocks }: UseBlockManagerProps) => {
   // Use refs to avoid stale closures — callbacks stay stable
   const blocksRef = useRef(blocks);
-  blocksRef.current = blocks;
   const setBlocksRef = useRef(setBlocks);
-  setBlocksRef.current = setBlocks;
+  useEffect(() => { blocksRef.current = blocks; });
+  useEffect(() => { setBlocksRef.current = setBlocks; });
 
   const updateBlock = useCallback((id: string, updates: Partial<BlockData>) => {
     const newBlocks = blocksRef.current.map(b => b.id === id ? { ...b, ...updates } : b);

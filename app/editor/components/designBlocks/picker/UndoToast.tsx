@@ -33,8 +33,10 @@ export const UndoToast: React.FC<UndoToastProps> = ({
   // values via the ref.
   const onDismissRef = useRef(onDismiss);
   const onUndoRef = useRef(onUndo);
-  onDismissRef.current = onDismiss;
-  onUndoRef.current = onUndo;
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+    onUndoRef.current = onUndo;
+  });
 
   useEffect(() => {
     const start = Date.now();

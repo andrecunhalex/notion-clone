@@ -53,7 +53,7 @@ export function useSwappable({ containerRef, saveValues, uploadImage }: UseSwapp
         setSwapPopover(toAbsolute(rect.left + rect.width / 2, rect.bottom + 6));
       });
     });
-  }, []);
+  }, [toAbsolute]);
 
   // --- Recalculate icon picker position from the swappable element ---
   const updateIconPickerPos = useCallback(() => {

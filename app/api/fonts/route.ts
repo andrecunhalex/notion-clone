@@ -21,14 +21,30 @@ const WEIGHT_MAP: Record<string, number> = {
   heavy: 900,
 };
 
-function parseVariant(fileName: string): { subFamily: string; weight: number; style: string } | null {
+interface ParsedVariant {
+  subFamily: string;
+  weight: number;
+  style: string;
+  isVariable?: boolean;
+}
+
+function parseVariant(fileName: string): ParsedVariant | null {
   const ext = path.extname(fileName);
   if (!FONT_EXTENSIONS.has(ext.toLowerCase())) return null;
 
   const baseName = path.basename(fileName, ext);
 
-  // Skip variable font files
-  if (baseName.toLowerCase().includes('variablefont')) return null;
+  // Variable font: "Montserrat-VariableFont_wght" or "Montserrat-Italic-VariableFont_wght"
+  const varMatch = baseName.match(/^(.+?)-VariableFont.*$/i);
+  if (varMatch) {
+    let sub = varMatch[1];
+    let style: 'normal' | 'italic' = 'normal';
+    if (/-italic$/i.test(sub)) {
+      style = 'italic';
+      sub = sub.replace(/-italic$/i, '');
+    }
+    return { subFamily: sub.replace(/_/g, ' '), weight: 400, style, isVariable: true };
+  }
 
   // Split on the last dash: "Roboto_Condensed-BoldItalic" → ["Roboto_Condensed", "BoldItalic"]
   const dashIdx = baseName.lastIndexOf('-');
@@ -66,32 +82,36 @@ export async function GET() {
     .map(d => d.name)
     .sort();
 
-  const familyMap = new Map<string, {
-    name: string;
-    folder: string;
-    variants: { file: string; weight: number; style: string }[];
-  }>();
+  interface Variant { file: string; weight: number; style: string; isVariable?: boolean }
+  const familyMap = new Map<string, { name: string; folder: string; variants: Variant[] }>();
 
   for (const folder of folders) {
     const folderPath = path.join(fontsDir, folder);
     const files = fs.readdirSync(folderPath);
 
-    for (const file of files) {
-      const parsed = parseVariant(file);
-      if (!parsed) continue;
+    // First pass: parse everything
+    const parsedFiles = files
+      .map(file => ({ file, parsed: parseVariant(file) }))
+      .filter((x): x is { file: string; parsed: ParsedVariant } => x.parsed !== null);
+
+    // Track which styles have variable fonts — those styles ignore static weights
+    const variableStyles = new Set(
+      parsedFiles.filter(x => x.parsed.isVariable).map(x => x.parsed.style)
+    );
+
+    for (const { file, parsed } of parsedFiles) {
+      // Skip static weights when a variable font covers this style
+      if (!parsed.isVariable && variableStyles.has(parsed.style)) continue;
 
       const key = parsed.subFamily.toLowerCase();
       if (!familyMap.has(key)) {
-        familyMap.set(key, {
-          name: parsed.subFamily,
-          folder,
-          variants: [],
-        });
+        familyMap.set(key, { name: parsed.subFamily, folder, variants: [] });
       }
       familyMap.get(key)!.variants.push({
         file: `${folder}/${file}`,
         weight: parsed.weight,
         style: parsed.style,
+        isVariable: parsed.isVariable,
       });
     }
   }

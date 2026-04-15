@@ -15,6 +15,7 @@ export interface FontVariant {
   file: string;
   weight: number;
   style: string;
+  isVariable?: boolean;
 }
 
 export interface FontFamily {
@@ -99,10 +100,16 @@ export function getCssFontFamily(name: string): string {
   return name;
 }
 
+/** Full weight ladder — used when a family is backed by a variable font */
+const VARIABLE_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+
 /** Convert FontFamily[] to FontEntry[] for the selector dropdown */
 export function fontFamiliesToEntries(families: FontFamily[]): FontEntry[] {
   return families.map(f => {
-    const weights = [...new Set(f.variants.map(v => v.weight))].sort((a, b) => a - b);
+    const hasVariable = f.variants.some(v => v.isVariable);
+    const weights = hasVariable
+      ? VARIABLE_WEIGHTS
+      : [...new Set(f.variants.map(v => v.weight))].sort((a, b) => a - b);
     const cssFamily = getCssFontFamily(f.name);
     return {
       name: f.name,
@@ -119,10 +126,14 @@ export function generateFontFaceCSS(families: FontFamily[]): string {
   for (const family of families) {
     const cssFamily = getCssFontFamily(family.name);
     for (const variant of family.variants) {
+      // Variable fonts cover the full 100–900 range in a single file
+      const fontWeight = variant.isVariable ? '100 900' : `${variant.weight}`;
+      const baseFormat = getFontFormat(variant.file);
+      const fmt = variant.isVariable ? `${baseFormat}-variations` : baseFormat;
       rules.push(`@font-face {
   font-family: '${cssFamily}';
-  src: url('/fonts/${variant.file}') format('${getFontFormat(variant.file)}');
-  font-weight: ${variant.weight};
+  src: url('/fonts/${variant.file}') format('${fmt}');
+  font-weight: ${fontWeight};
   font-style: ${variant.style};
   font-display: swap;
 }`);

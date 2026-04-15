@@ -30,7 +30,8 @@ export const useFonts = () => useContext(FontContext);
 // Global singleton — fonts are loaded once and shared across all editors
 // ---------------------------------------------------------------------------
 
-const CACHE_KEY = 'editor-fonts-cache';
+// v2: variable-font migration (Montserrat/Caveat statics removed)
+const CACHE_KEY = 'editor-fonts-cache-v2';
 const STYLE_ID = 'editor-custom-fonts';
 
 let cachedEntries: FontEntry[] | null = null;

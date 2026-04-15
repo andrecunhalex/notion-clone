@@ -5,7 +5,7 @@ import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { EditorDataSource, DocumentMeta } from '../EditorProvider';
 import { BlockData } from '../types';
-import { CollaborationConfig, RemoteUser, SyncStatus, CursorPosition } from './types';
+import { CollaborationConfig, RemoteUser, SyncStatus } from './types';
 import { YjsDocSync } from './yjs-sync';
 import { SupabaseProvider } from './supabase-provider';
 
@@ -241,6 +241,8 @@ export function useCollaborativeEditor({
   }, []);
 
   const undoManagerRef = useRef<Y.UndoManager | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   useEffect(() => {
     if (!docRef.current) return;
@@ -251,9 +253,15 @@ export function useCollaborativeEditor({
     });
     undoManagerRef.current = um;
 
+    const refreshFlags = () => {
+      setCanUndo(um.undoStack.length > 0);
+      setCanRedo(um.redoStack.length > 0);
+    };
+
     // Save cursor position on each undo stack entry for precise restoration
     um.on('stack-item-added', (event: { stackItem: { meta: Map<string, unknown> } }) => {
       const sel = window.getSelection();
+      refreshFlags();
       if (!sel || sel.rangeCount === 0) return;
       const anchorEl = sel.anchorNode?.nodeType === Node.ELEMENT_NODE
         ? sel.anchorNode as Element
@@ -266,6 +274,8 @@ export function useCollaborativeEditor({
       const charOffset = getCharOffset(editable, sel.anchorNode, sel.anchorOffset);
       event.stackItem.meta.set('cursor', { blockId, charOffset } as CursorMeta);
     });
+    um.on('stack-item-popped', refreshFlags);
+    um.on('stack-cleared', refreshFlags);
 
     return () => um.destroy();
   }, [config.documentId]);
@@ -325,9 +335,6 @@ export function useCollaborativeEditor({
     }
     return selectedIdsRef.current;
   }, [refreshMeta]);
-
-  const canUndo = undoManagerRef.current ? undoManagerRef.current.undoStack.length > 0 : false;
-  const canRedo = undoManagerRef.current ? undoManagerRef.current.redoStack.length > 0 : false;
 
   const saveNow = useCallback(async () => {
     await providerRef.current?.saveNow();
