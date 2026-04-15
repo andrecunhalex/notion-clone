@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import React, { createContext, useContext, useEffect, useMemo } from 'react';
-import { setActiveLibrary } from './store';
+import { setActiveLibrary, releaseActiveLibrary } from './store';
 import { createFallbackLibrary } from './fallbackLibrary';
 import { createSupabaseLibrary } from './supabaseLibrary';
 import type { DesignLibraryInterface, DesignLibraryConfig } from './types';
@@ -112,13 +112,20 @@ export const DesignLibraryProvider: React.FC<ProviderProps> = ({ config, library
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [configKey]);
 
-  // Register the active library in the module store so getTemplate() / preview
-  // helpers / DesignBlock render all see the same snapshot. Release on unmount
-  // — when the last consumer is gone, dispose tears down the realtime channel.
+  // Register the active library in the module store so `getTemplate()` /
+  // preview helpers / `DesignBlock` rendering all see the same snapshot.
+  //
+  // The store uses a STACK — `setActiveLibrary` pushes, `releaseActiveLibrary`
+  // pops this specific instance on unmount. This matters when the version
+  // history overlay mounts additional providers on top of the main one: when
+  // history closes and its providers unmount, they only pop their own stack
+  // entries, and the outer provider's registration survives. Previously we
+  // called `setActiveLibrary(null)` on unmount which nuked everything and
+  // caused design blocks to disappear from the main editor until reload.
   useEffect(() => {
     setActiveLibrary(lib);
     return () => {
-      setActiveLibrary(null);
+      releaseActiveLibrary(lib);
       // Skip releasing caller-owned instances — they belong to the caller.
       if (!library) {
         releaseLibrary(configKey);

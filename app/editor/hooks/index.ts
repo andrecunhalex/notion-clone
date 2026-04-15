@@ -9,5 +9,10 @@ export { useKeyboardShortcuts } from './useKeyboardShortcuts';
 export { usePagination } from './usePagination';
 export { useTableBlock } from './useTableBlock';
 export { useFloatingToolbar } from './useFloatingToolbar';
+export {
+  FormatCommandsProvider,
+  useFormatCommandsContext,
+} from './useFormatCommands';
+export type { FormatCommands } from './useFormatCommands';
 export { useSectionNav } from './useSectionNav';
 export { useComments } from './useComments';

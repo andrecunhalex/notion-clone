@@ -1,5 +1,28 @@
 'use client';
 
+/* eslint-disable react-hooks/refs --
+ *
+ * The `ui` object returned by `useFloatingToolbar` mixes React refs and
+ * plain state. The react-hooks/refs lint rule inspects the TYPE of `ui`,
+ * spots its ref members and then flags every property access as a ref
+ * access — most of which are false positives (sizeOpen, colorOpen, linkUrl,
+ * etc. are plain state, not refs). Disabling file-wide is cleaner than
+ * papering over every single prop with a localized comment.
+ */
+
+/**
+ * FloatingToolbar — the contextual bubble that appears above a text
+ * selection. Consumes the shared `commands` object (from `useFormatCommands`,
+ * hoisted in `NotionEditor`) for all formatting logic, and `useFloatingToolbar`
+ * for its own visibility/position/submenu state.
+ *
+ * Rendering is two-part:
+ *   1. The floating bar itself (bold, italic, font, size, color, alignment,
+ *      link, comment, internal ref).
+ *   2. The submenus that each button opens — positioned absolutely relative
+ *      to the bar.
+ */
+
 import React from 'react';
 import {
   Bold, Italic, Underline, Strikethrough,
@@ -12,6 +35,7 @@ import { BlockData } from '../types';
 import { modKey, shiftKey } from '../constants';
 import { useFonts } from './FontLoader';
 import { useFloatingToolbar } from '../hooks/useFloatingToolbar';
+import { useFormatCommandsContext } from '../hooks/useFormatCommands';
 import { Tooltip } from './toolbar/Tooltip';
 import { ColorPicker } from './toolbar/ColorPicker';
 import { FontPicker } from './toolbar/FontPicker';
@@ -21,7 +45,7 @@ import { AlignmentPicker } from './toolbar/AlignmentPicker';
 import { LinkInput } from './toolbar/LinkInput';
 import { RefPicker } from './toolbar/RefPicker';
 
-// --- Formatting actions ---
+// --- Formatting action buttons (bold / italic / underline / strike) ---
 interface FormatAction {
   id: string;
   icon: React.ReactNode;
@@ -37,59 +61,59 @@ const FORMAT_ACTIONS: FormatAction[] = [
   { id: 'strikethrough', icon: <Strikethrough size={16} />, label: 'Tachado', shortcut: `${modKey}+${shiftKey}+X`, command: 'strikeThrough' },
 ];
 
-// --- Main component ---
 interface FloatingToolbarProps {
-  documentFont?: string;
   blocks?: BlockData[];
-  updateBlock?: (id: string, updates: Partial<BlockData>) => void;
   onAddComment?: (blockId: string, selectedText: string, range: Range) => void;
   scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, blocks, updateBlock, onAddComment, scrollRef }) => {
+export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
+  blocks, onAddComment, scrollRef,
+}) => {
+  // Format commands come from the shared context — see FormatCommandsProvider.
+  const commands = useFormatCommandsContext();
   const { allFonts, customFonts } = useFonts();
+  const ui = useFloatingToolbar({ commands, scrollRef });
 
-  const toolbar = useFloatingToolbar({ documentFont, blocks, updateBlock, allFonts, scrollRef });
-
-  const currentFontEntry = allFonts.find(f => f.family === toolbar.currentFont);
+  const currentFontEntry = allFonts.find(f => f.family === commands.currentFont);
   const availableWeights = currentFontEntry?.availableWeights;
-  const currentWeightLabel = WEIGHT_LABELS[toolbar.currentWeight] || String(toolbar.currentWeight);
+  const currentWeightLabel = WEIGHT_LABELS[commands.currentWeight] || String(commands.currentWeight);
 
-  if (!toolbar.visible) return null;
+  if (!ui.visible) return null;
 
   return (
     <>
-      {/* Main toolbar */}
+      {/* Main floating bar */}
       <div
-        ref={toolbar.toolbarRef}
+        ref={ui.toolbarRef}
         className="absolute z-50 bg-white shadow-lg border border-gray-200 rounded-lg p-1 flex items-center gap-0.5"
-        style={{ left: toolbar.position.left, top: toolbar.position.top }}
+        style={{ left: ui.position.left, top: ui.position.top }}
         onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
       >
-        {/* Font button */}
+        {/* Font */}
         <Tooltip label="Fonte" shortcut="">
           <button
-            className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 max-w-25 ${toolbar.fontOpen ? 'bg-gray-100' : ''}`}
-            onClick={() => { toolbar.setFontOpen(!toolbar.fontOpen); toolbar.closeSubmenusExcept('font'); }}
+            className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 max-w-25 ${ui.fontOpen ? 'bg-gray-100' : ''}`}
+            onClick={() => { ui.setFontOpen(!ui.fontOpen); ui.closeSubmenusExcept('font'); }}
           >
             <Type size={14} className="shrink-0 relative -top-[0.25px]" />
             <span className="truncate">
-              {toolbar.currentFont
-                ? allFonts.find(f => f.family === toolbar.currentFont)?.name || 'Fonte'
+              {commands.currentFont
+                ? allFonts.find(f => f.family === commands.currentFont)?.name || 'Fonte'
                 : 'Fonte'}
             </span>
             <ChevronDown size={10} />
           </button>
         </Tooltip>
 
-        {/* Weight button */}
+        {/* Weight (only fonts with multiple weights) */}
         {availableWeights && availableWeights.length > 1 && (
           <Tooltip label="Peso" shortcut="">
             <button
-              className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 ${toolbar.weightOpen ? 'bg-gray-100' : ''}`}
-              onClick={() => { toolbar.setWeightOpen(!toolbar.weightOpen); toolbar.closeSubmenusExcept('weight'); }}
+              className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 ${ui.weightOpen ? 'bg-gray-100' : ''}`}
+              onClick={() => { ui.setWeightOpen(!ui.weightOpen); ui.closeSubmenusExcept('weight'); }}
             >
-              <span className="truncate" style={{ fontWeight: toolbar.currentWeight }}>
+              <span className="truncate" style={{ fontWeight: commands.currentWeight }}>
                 {currentWeightLabel}
               </span>
               <ChevronDown size={10} />
@@ -97,24 +121,24 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
           </Tooltip>
         )}
 
-        {/* Font size button */}
+        {/* Font size */}
         <Tooltip label="Tamanho" shortcut="">
           <button
-            className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 ${toolbar.sizeOpen ? 'bg-gray-100' : ''}`}
-            onClick={() => { toolbar.setSizeOpen(!toolbar.sizeOpen); toolbar.closeSubmenusExcept('size'); }}
+            className={`px-1.5 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 text-xs text-gray-600 ${ui.sizeOpen ? 'bg-gray-100' : ''}`}
+            onClick={() => { ui.setSizeOpen(!ui.sizeOpen); ui.closeSubmenusExcept('size'); }}
           >
-            <span className="truncate tabular-nums">{toolbar.currentFontSize}</span>
+            <span className="truncate tabular-nums">{commands.currentFontSize}</span>
             <ChevronDown size={10} />
           </button>
         </Tooltip>
 
         <div className="w-px h-5 bg-gray-200 mx-0.5" />
 
-        {/* Color button */}
+        {/* Color */}
         <Tooltip label="Cor" shortcut="">
           <button
-            className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${toolbar.colorOpen ? 'bg-gray-100' : ''}`}
-            onClick={() => { toolbar.setColorOpen(!toolbar.colorOpen); toolbar.closeSubmenusExcept('color'); }}
+            className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${ui.colorOpen ? 'bg-gray-100' : ''}`}
+            onClick={() => { ui.setColorOpen(!ui.colorOpen); ui.closeSubmenusExcept('color'); }}
           >
             <Palette size={16} className="text-gray-600" />
           </button>
@@ -122,76 +146,72 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
 
         <div className="w-px h-5 bg-gray-200 mx-0.5" />
 
-        {/* Format buttons */}
+        {/* Bold / Italic / Underline / Strikethrough */}
         {FORMAT_ACTIONS.map(action => (
           <Tooltip key={action.id} label={action.label} shortcut={action.shortcut}>
             <button
               className={`p-1.5 rounded transition-colors ${
-                toolbar.activeFormats.has(action.id)
+                commands.activeFormats.has(action.id)
                   ? 'bg-gray-200 text-gray-900'
                   : 'hover:bg-gray-100 text-gray-600'
               }`}
-              onClick={() => toolbar.applyFormat(action.command)}
+              onClick={() => commands.applyFormat(action.command)}
             >
               {action.icon}
             </button>
           </Tooltip>
         ))}
 
-        {/* Alignment dropdown */}
-        {updateBlock && (
-          <>
-            <div className="w-px h-5 bg-gray-200 mx-0.5" />
-            <Tooltip label="Alinhamento" shortcut="">
-              <button
-                className={`p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 ${toolbar.alignOpen ? 'bg-gray-100' : ''}`}
-                onClick={() => { toolbar.setAlignOpen(!toolbar.alignOpen); toolbar.closeSubmenusExcept('align'); }}
-              >
-                {toolbar.currentAlign === 'center' ? <AlignCenter size={16} className="text-gray-600" /> :
-                 toolbar.currentAlign === 'right' ? <AlignRight size={16} className="text-gray-600" /> :
-                 toolbar.currentAlign === 'justify' ? <AlignJustify size={16} className="text-gray-600" /> :
-                 <AlignLeft size={16} className="text-gray-600" />}
-                <ChevronDown size={10} className="text-gray-400" />
-              </button>
-            </Tooltip>
-          </>
-        )}
+        {/* Alignment dropdown — only when we can actually update blocks */}
+        <div className="w-px h-5 bg-gray-200 mx-0.5" />
+        <Tooltip label="Alinhamento" shortcut="">
+          <button
+            className={`p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center gap-0.5 ${ui.alignOpen ? 'bg-gray-100' : ''}`}
+            onClick={() => { ui.setAlignOpen(!ui.alignOpen); ui.closeSubmenusExcept('align'); }}
+          >
+            {commands.currentAlign === 'center' ? <AlignCenter size={16} className="text-gray-600" /> :
+             commands.currentAlign === 'right' ? <AlignRight size={16} className="text-gray-600" /> :
+             commands.currentAlign === 'justify' ? <AlignJustify size={16} className="text-gray-600" /> :
+             <AlignLeft size={16} className="text-gray-600" />}
+            <ChevronDown size={10} className="text-gray-400" />
+          </button>
+        </Tooltip>
 
         <div className="w-px h-5 bg-gray-200 mx-0.5" />
 
-        {/* Link button */}
+        {/* Link */}
         <Tooltip label="Link externo" shortcut={`${modKey}+K`}>
           <button
             className={`p-1.5 rounded transition-colors ${
-              toolbar.activeFormats.has('link')
+              commands.activeFormats.has('link')
                 ? 'bg-gray-200 text-gray-900'
-                : toolbar.linkOpen ? 'bg-gray-100 text-gray-600' : 'hover:bg-gray-100 text-gray-600'
+                : ui.linkOpen ? 'bg-gray-100 text-gray-600' : 'hover:bg-gray-100 text-gray-600'
             }`}
             onClick={() => {
-              if (toolbar.activeFormats.has('link') && toolbar.currentLink) {
-                toolbar.setLinkUrl(toolbar.currentLink.href);
+              if (commands.activeFormats.has('link') && commands.currentLink) {
+                ui.setLinkUrl(commands.currentLink.href);
               } else {
-                toolbar.setLinkUrl('');
+                ui.setLinkUrl('');
               }
-              toolbar.setLinkOpen(!toolbar.linkOpen);
-              toolbar.closeSubmenusExcept('link');
+              ui.setLinkOpen(!ui.linkOpen);
+              ui.closeSubmenusExcept('link');
             }}
           >
             <Link size={16} />
           </button>
         </Tooltip>
 
-        {/* Internal reference button */}
+        {/* Internal reference */}
         {blocks && blocks.length > 0 && (
           <Tooltip label="Referência interna" shortcut="">
             <button
               className={`p-1.5 rounded transition-colors ${
-                toolbar.refOpen ? 'bg-gray-100 text-gray-600' : 'hover:bg-gray-100 text-gray-600'
+                ui.refOpen ? 'bg-gray-100 text-gray-600' : 'hover:bg-gray-100 text-gray-600'
               }`}
               onClick={() => {
-                toolbar.setRefSearch('');
-                toolbar.setRefOpen(!toolbar.refOpen);
-                toolbar.closeSubmenusExcept('ref');
+                ui.setRefSearch('');
+                ui.setRefOpen(!ui.refOpen);
+                ui.closeSubmenusExcept('ref');
               }}
             >
               <BookmarkIcon size={16} />
@@ -199,7 +219,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
           </Tooltip>
         )}
 
-        {/* Comment button */}
+        {/* Comment */}
         {onAddComment && (
           <>
             <div className="w-px h-5 bg-gray-200 mx-0.5" />
@@ -207,10 +227,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
               <button
                 className="p-1.5 rounded hover:bg-gray-100 transition-colors text-gray-600"
                 onClick={() => {
-                  toolbar.restoreSelection();
+                  commands.restoreSelection();
                   const sel = window.getSelection();
                   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
-                  const blockId = toolbar.getSelectedBlockId();
+                  const blockId = commands.getSelectedBlockId();
                   if (!blockId) return;
                   const text = sel.toString().trim();
                   if (!text) return;
@@ -226,81 +246,81 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ documentFont, 
       </div>
 
       {/* Submenus */}
-      {toolbar.colorOpen && (
+      {ui.colorOpen && (
         <ColorPicker
-          menuRef={toolbar.colorMenuRef}
-          menuPos={toolbar.colorMenuPos}
-          currentTextColor={toolbar.currentTextColor}
-          currentBgColor={toolbar.currentBgColor}
-          onTextColor={toolbar.applyTextColor}
-          onBgColor={toolbar.applyBgColor}
+          menuRef={ui.colorMenuRef}
+          menuPos={ui.colorMenuPos}
+          currentTextColor={commands.currentTextColor}
+          currentBgColor={commands.currentBgColor}
+          onTextColor={c => { commands.applyTextColor(c); ui.setColorOpen(false); }}
+          onBgColor={c => { commands.applyBgColor(c); ui.setColorOpen(false); }}
         />
       )}
 
-      {toolbar.fontOpen && (
+      {ui.fontOpen && (
         <FontPicker
-          menuRef={toolbar.fontMenuRef}
-          menuPos={toolbar.fontMenuPos}
+          menuRef={ui.fontMenuRef}
+          menuPos={ui.fontMenuPos}
           allFonts={allFonts}
           customFonts={customFonts}
-          currentFont={toolbar.currentFont}
-          onSelect={toolbar.applyFont}
+          currentFont={commands.currentFont}
+          onSelect={f => { commands.applyFont(f); ui.setFontOpen(false); }}
         />
       )}
 
-      {toolbar.weightOpen && availableWeights && availableWeights.length > 1 && (
+      {ui.weightOpen && availableWeights && availableWeights.length > 1 && (
         <WeightPicker
-          menuRef={toolbar.weightMenuRef}
-          menuPos={toolbar.weightMenuPos}
+          menuRef={ui.weightMenuRef}
+          menuPos={ui.weightMenuPos}
           availableWeights={availableWeights}
-          currentWeight={toolbar.currentWeight}
-          currentFont={toolbar.currentFont}
-          onSelect={toolbar.applyWeight}
+          currentWeight={commands.currentWeight}
+          currentFont={commands.currentFont}
+          onSelect={w => { commands.applyWeight(w); ui.setWeightOpen(false); }}
         />
       )}
 
-      {toolbar.sizeOpen && (
+      {ui.sizeOpen && (
         <SizePicker
-          menuRef={toolbar.sizeMenuRef}
-          menuPos={toolbar.sizeMenuPos}
-          currentSize={toolbar.currentFontSize}
-          onSelect={toolbar.applyFontSize}
+          menuRef={ui.sizeMenuRef}
+          menuPos={ui.sizeMenuPos}
+          currentSize={commands.currentFontSize}
+          onSelect={s => { commands.applyFontSize(s); ui.setSizeOpen(false); }}
         />
       )}
 
-      {toolbar.alignOpen && updateBlock && (
+      {ui.alignOpen && (
         <AlignmentPicker
-          menuRef={toolbar.alignMenuRef}
-          menuPos={toolbar.alignMenuPos}
-          currentAlign={toolbar.currentAlign}
-          onSelect={toolbar.applyAlignment}
+          menuRef={ui.alignMenuRef}
+          menuPos={ui.alignMenuPos}
+          currentAlign={commands.currentAlign}
+          onSelect={a => { commands.applyAlignment(a); ui.setAlignOpen(false); }}
         />
       )}
 
-      {toolbar.linkOpen && (
+      {ui.linkOpen && (
         <LinkInput
-          menuRef={toolbar.linkMenuRef}
-          menuPos={toolbar.linkMenuPos}
-          inputRef={toolbar.linkInputRef}
-          linkUrl={toolbar.linkUrl}
-          onUrlChange={toolbar.setLinkUrl}
-          onApply={toolbar.applyLink}
-          onClose={() => toolbar.setLinkOpen(false)}
-          hasLink={toolbar.activeFormats.has('link') && !!toolbar.currentLink}
-          onRemoveLink={toolbar.removeLink}
+          menuRef={ui.linkMenuRef}
+          menuPos={ui.linkMenuPos}
+          inputRef={ui.linkInputRef}
+          linkUrl={ui.linkUrl}
+          onUrlChange={ui.setLinkUrl}
+          onApply={u => { commands.applyLink(u); ui.setLinkOpen(false); ui.setLinkUrl(''); }}
+          onClose={() => ui.setLinkOpen(false)}
+          hasLink={commands.activeFormats.has('link') && !!commands.currentLink}
+          onRemoveLink={() => { commands.removeLink(); ui.setLinkOpen(false); }}
         />
       )}
 
-      {toolbar.refOpen && blocks && (
+      {ui.refOpen && blocks && (
         <RefPicker
-          menuRef={toolbar.refMenuRef}
-          menuPos={toolbar.refMenuPos}
-          inputRef={toolbar.refInputRef}
+          menuRef={ui.refMenuRef}
+          menuPos={ui.refMenuPos}
+          inputRef={ui.refInputRef}
           blocks={blocks}
-          refSearch={toolbar.refSearch}
-          onSearchChange={toolbar.setRefSearch}
-          onSelect={toolbar.applyRef}
-          onClose={() => toolbar.setRefOpen(false)}
+          refSearch={ui.refSearch}
+          onSearchChange={ui.setRefSearch}
+          onSelect={id => { commands.applyRef(id); ui.setRefOpen(false); ui.setRefSearch(''); }}
+          onClose={() => ui.setRefOpen(false)}
         />
       )}
     </>

@@ -2,9 +2,8 @@
 
 import React, { useMemo, useState, useCallback } from 'react';
 import { ArrowLeft, Loader2, Clock, X } from 'lucide-react';
-import { BlockData, DocumentVersion } from '../types';
+import { BlockData, DocumentVersion, DesignLibraryConfigInput } from '../types';
 import { NotionEditor } from '../NotionEditor';
-import { getTemplate } from './designBlocks';
 import type { UseVersionHistoryReturn } from '../hooks/useVersionHistory';
 
 // ---------------------------------------------------------------------------
@@ -237,6 +236,11 @@ interface VersionHistoryOverlayProps {
   editorConfig?: import('../types').EditorConfig;
   /** Current document meta (for pageBackground, documentSettings, etc.) */
   currentMeta?: Record<string, unknown>;
+  /** Design library config — must be forwarded to the nested NotionEditor
+   *  instances so they can resolve design-block templates from the same
+   *  Supabase library as the main editor. Without this, design blocks
+   *  render as null and disappear from the history view. */
+  designLibraryConfig?: DesignLibraryConfigInput;
 }
 
 // ---------------------------------------------------------------------------
@@ -251,11 +255,9 @@ export const VersionHistoryOverlay: React.FC<VersionHistoryOverlayProps> = ({
   onRestore,
   editorConfig = {},
   currentMeta,
+  designLibraryConfig,
 }) => {
   const { versions, loading, selectedVersion, selectVersion, restore, close } = versionHistory;
-
-  const versionFont = (selectedVersion?.meta?.documentFont as string) || documentFont;
-  const versionFontSize = (selectedVersion?.meta?.documentFontSize as number) || documentFontSize;
 
   // Block-level diff
   const diffs = useMemo<BlockDiffs>(() => {
@@ -418,6 +420,7 @@ export const VersionHistoryOverlay: React.FC<VersionHistoryOverlayProps> = ({
                 title=""
                 readOnly
                 config={readOnlyConfig}
+                designLibraryConfig={designLibraryConfig}
               />
             </div>
 
@@ -436,6 +439,7 @@ export const VersionHistoryOverlay: React.FC<VersionHistoryOverlayProps> = ({
                 title=""
                 readOnly
                 config={readOnlyConfig}
+                designLibraryConfig={designLibraryConfig}
               />
             </div>
           </>
@@ -449,6 +453,7 @@ export const VersionHistoryOverlay: React.FC<VersionHistoryOverlayProps> = ({
               title=""
               readOnly
               config={readOnlyConfig}
+              designLibraryConfig={designLibraryConfig}
             />
           </div>
         )}

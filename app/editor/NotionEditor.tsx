@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig, VersionHistoryCollabConfig, CommentUser, CommentThread, PageBackground, DocumentSettings, DocumentPageSettings } from './types';
+import { BlockData, SlashMenuState, ViewMode, NotionEditorProps, EditorConfig, VersionHistoryCollabConfig, CommentUser, CommentThread, PageBackground, DocumentSettings, DocumentPageSettings, DesignLibraryConfigInput } from './types';
 import { getPaginatedBlocks, focusBlock, createDefaultTableData, generateId, isContentEmpty, resolvePageConfig, getContentHeight } from './utils';
 import {
   useBlockManager,
@@ -13,6 +13,8 @@ import {
   useSectionNav,
   useComments,
 } from './hooks';
+import { FormatCommandsProvider } from './hooks/useFormatCommands';
+import { useFonts } from './components/FontLoader';
 import { Block, SlashMenu, Toolbar, SelectionOverlay, FloatingToolbar, SectionNav, SectionTocPage, CommentsSidebar, DocumentSettingsPanel } from './components';
 import { SectionNavPanel } from './components/SectionNavPanel';
 import { VersionHistoryOverlay } from './components/VersionHistory';
@@ -44,7 +46,12 @@ const NotionEditorInner: React.FC<{
   commentUser?: CommentUser;
   onCommentsChange?: (threads: CommentThread[]) => void;
   initialMeta?: Record<string, unknown>;
-}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus, onSaveNow, collaborationConfig, readOnly, commentUser, onCommentsChange, initialMeta }) => {
+  /** Passed through to VersionHistoryOverlay so its nested NotionEditor
+   *  instances can resolve design-block templates from the same Supabase
+   *  library as the main editor. Without this, design blocks silently
+   *  disappear from the history view. */
+  designLibraryConfig?: DesignLibraryConfigInput;
+}> = ({ dataSource, onChange, defaultViewMode, title, config, onBlockFocus, remoteUsers, syncStatus, onSaveNow, collaborationConfig, readOnly, commentUser, onCommentsChange, initialMeta, designLibraryConfig }) => {
   const { blocks, setBlocks: setBlocksRaw, undo: undoRaw, redo: redoRaw, canUndo, canRedo, meta, setMeta } = dataSource;
 
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
@@ -141,13 +148,16 @@ const NotionEditorInner: React.FC<{
     startSelection, clearSelection, didDragSelect
   } = useSelection({ blocks, containerRef, blockRefs });
 
-  // Track selected IDs for history through the proper interface
+  // "Latest value" refs — read by stable callbacks (setBlocks, toggleFullWidth, etc.)
+  // that must not be recreated when these values change. Assignment happens in
+  // an effect so the ref stays in sync with the committed render rather than
+  // being updated mid-render (which is unsafe under concurrent rendering).
   const selectedIdsRef = useRef(selectedIds);
-  selectedIdsRef.current = selectedIds;
-
-  // Track overlay state via ref so setBlocks can check it without re-creating
   const overlayOpenRef = useRef(false);
-  overlayOpenRef.current = versionHistory.isOpen;
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+    overlayOpenRef.current = versionHistory.isOpen;
+  });
 
   const restoreInProgressRef = useRef(false);
 
@@ -191,11 +201,19 @@ const NotionEditorInner: React.FC<{
     blocks, setBlocks
   });
 
+  // Fonts are needed by the FormatCommandsProvider a few lines below.
+  const { allFonts } = useFonts();
+
+  // Drop indicator DOM node — rendered once inside `containerRef` below
+  // and mutated directly during drag (no React state → no re-renders).
+  const dropIndicatorRef = useRef<HTMLDivElement>(null);
+
   const {
-    dropTarget, handleDragStart, handleDragOver,
+    handleDragStart, handleDragOver,
     handleContainerDragOver, handleDrop, clearDropTarget
   } = useDragAndDrop({
-    blocks, selectedIds, setSelectedIds, blockRefs, moveBlocks
+    blocks, selectedIds, setSelectedIds, blockRefs, moveBlocks,
+    scrollRef, containerRef, dropIndicatorRef,
   });
 
   const { handleCopy, handlePaste } = useClipboard({ blocks, setBlocks, selectedIds, setSelectedIds });
@@ -541,12 +559,19 @@ const NotionEditorInner: React.FC<{
   const edgePaddingKey = viewMode === 'paginated'
     ? `p:${pageConfig.paddingTop}:${pageConfig.paddingRight}:${pageConfig.paddingBottom}:${pageConfig.paddingLeft}`
     : 'c:48:48:0:48';
+  // Intentionally depends on the derived `edgePaddingKey` string rather than
+  // the raw pageConfig fields: `pageConfig` is recreated each render via
+  // `resolvePageConfig`, so without this trick the memo would rebuild every
+  // time and every Block would re-render on every parent update. React
+  // Compiler can't infer the dep equivalence, so both rules get silenced.
+  /* eslint-disable react-hooks/exhaustive-deps */
   const edgePadding = useMemo(() => {
     if (viewMode === 'paginated') {
       return { top: pageConfig.paddingTop, right: pageConfig.paddingRight, bottom: pageConfig.paddingBottom, left: pageConfig.paddingLeft };
     }
     return { top: 48, right: 48, bottom: 0, left: 48 };
-  }, [edgePaddingKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [edgePaddingKey]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const handleBlockFocus = useCallback((blockId: string | null) => {
     activeBlockIdRef.current = blockId;
@@ -564,7 +589,7 @@ const NotionEditorInner: React.FC<{
   const allTargetsFullWidth = targetBlockIds.length > 0 && targetBlockIds.every(id => blocks.find(b => b.id === id)?.fullWidth);
 
   const blocksRef = useRef(blocks);
-  blocksRef.current = blocks;
+  useEffect(() => { blocksRef.current = blocks; });
 
   const toggleFullWidth = useCallback(() => {
     const currentBlocks = blocksRef.current;
@@ -673,46 +698,9 @@ const NotionEditorInner: React.FC<{
     return () => document.removeEventListener('keydown', handler);
   }, [viewMode]);
 
-  // Zoom: Ctrl+wheel — native listener with { passive: false } to allow preventDefault
-  const zoomRef = useRef(zoom);
-  zoomRef.current = zoom;
-  useEffect(() => {
-    if (viewMode !== 'paginated') return;
-    const scrollEl = scrollRef.current;
-    if (!scrollEl) return;
-
-    const handler = (e: WheelEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      e.preventDefault();
-
-      const oldZoom = zoomRef.current;
-      // Proportional delta clamped to a small range for smooth feel
-      const rawDelta = -e.deltaY * 0.001;
-      const clampedDelta = Math.max(-0.03, Math.min(0.03, rawDelta));
-      const newZoom = Math.min(3, Math.max(0.25, Math.round((oldZoom + clampedDelta) * 100) / 100));
-      if (newZoom === oldZoom) return;
-
-      // Zoom toward mouse position: adjust scroll so the point under the cursor stays put
-      const scrollRect = scrollEl.getBoundingClientRect();
-      const mouseY = e.clientY - scrollRect.top + scrollEl.scrollTop;
-      const mouseX = e.clientX - scrollRect.left + scrollEl.scrollLeft;
-
-      // The point in unscaled document coords that the mouse is over
-      const docY = mouseY / oldZoom;
-      const docX = mouseX / oldZoom;
-
-      setZoom(newZoom);
-
-      // After scale change, adjust scroll so that same doc point stays under cursor
-      requestAnimationFrame(() => {
-        scrollEl.scrollTop = docY * newZoom - (e.clientY - scrollRect.top);
-        scrollEl.scrollLeft = docX * newZoom - (e.clientX - scrollRect.left);
-      });
-    };
-
-    scrollEl.addEventListener('wheel', handler, { passive: false });
-    return () => scrollEl.removeEventListener('wheel', handler);
-  }, [viewMode]);
+  // Ctrl+wheel zoom was removed — it ran a non-passive wheel listener that
+  // hijacked scrolling and caused jitter. Users now zoom via Ctrl+=/Ctrl+- or
+  // the explicit zoom pill in the toolbar.
 
   return (
     <div
@@ -722,6 +710,15 @@ const NotionEditorInner: React.FC<{
       onMouseDown={handleMouseDown}
       onDragEnd={clearDropTarget}
     >
+      <FormatCommandsProvider
+        blocks={blocks}
+        updateBlock={updateBlock}
+        setBlocks={setBlocks}
+        selectedBlockIds={selectedIds}
+        allFonts={allFonts}
+        setDocumentFont={setDocumentFont}
+        setDocumentFontSize={setDocumentFontSize}
+      >
       {!readOnly && <Toolbar
         title={title}
         canUndo={canUndo}
@@ -731,9 +728,7 @@ const NotionEditorInner: React.FC<{
         viewMode={viewMode}
         onToggleViewMode={() => setViewMode(prev => (prev === 'continuous' ? 'paginated' : 'continuous'))}
         documentFont={documentFont}
-        onDocumentFontChange={setDocumentFont}
         documentFontSize={documentFontSize}
-        onDocumentFontSizeChange={setDocumentFontSize}
         remoteUsers={remoteUsers}
         syncStatus={syncStatus}
         showSaved={showSaved}
@@ -748,11 +743,6 @@ const NotionEditorInner: React.FC<{
         onToggleSectionPanel={() => setSectionPanelOpen(prev => !prev)}
         onOpenVersionHistory={versionHistory.available ? versionHistory.open : undefined}
         onToggleSettings={() => setSettingsPanelOpen(prev => !prev)}
-        blocks={blocks}
-        updateBlock={updateBlock}
-        setBlocks={setBlocks}
-        selectedBlockIds={selectedIds}
-        scrollRef={scrollRef}
       />}
 
       {/* Scroll container — takes all remaining space below toolbar (flex-1).
@@ -860,7 +850,6 @@ const NotionEditorInner: React.FC<{
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
                     onDrop={handleDrop}
-                    dropTarget={dropTarget}
                     onHeightChange={handleHeightChange}
                     onClearSelection={clearSelection}
                     onBlockFocus={handleBlockFocus}
@@ -925,13 +914,20 @@ const NotionEditorInner: React.FC<{
               onClick={handleBottomClick}
             />
           )}
+
+          {/* Drop indicator — shared across all blocks. The dragover handler
+              writes its position directly via `style.transform`/`style.width`
+              so we never re-render React during drag. */}
+          <div
+            ref={dropIndicatorRef}
+            className="absolute top-0 left-0 h-[2px] bg-blue-500 pointer-events-none z-20"
+            style={{ display: 'none', willChange: 'transform' }}
+          />
         </div>
 
         {!readOnly && !slashMenu.isOpen && (
           <FloatingToolbar
-            documentFont={documentFont}
             blocks={blocks}
-            updateBlock={updateBlock}
             onAddComment={config.enableComments ? comments.startComment : undefined}
             scrollRef={scrollRef}
           />
@@ -999,8 +995,10 @@ const NotionEditorInner: React.FC<{
           onRestore={handleVersionRestore}
           editorConfig={config}
           currentMeta={meta}
+          designLibraryConfig={designLibraryConfig}
         />
       )}
+      </FormatCommandsProvider>
     </div>
   );
 };
@@ -1058,6 +1056,7 @@ export const NotionEditor: React.FC<NotionEditorProps> = ({
           commentUser={commentUser}
           onCommentsChange={onCommentsChange}
           initialMeta={initialMeta}
+          designLibraryConfig={designLibraryConfig}
         />
       </EditorProvider>
       </DesignLibraryProvider>

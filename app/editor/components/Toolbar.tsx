@@ -5,30 +5,24 @@ import {
   RotateCcw, RotateCw, ArrowLeft, Bold, Italic, Underline,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Link as LinkIcon, ChevronDown, Share2, Download,
-  MoreHorizontal, FileText, Scroll, MoveHorizontal, List,
-  Clock, Settings, Cloud, CloudOff, RefreshCw, CheckCircle2, Check,
+  MoreHorizontal, Cloud, CloudOff, RefreshCw, CheckCircle2, Check,
   Plus, Minus, X,
 } from 'lucide-react';
-import { ViewMode, BlockData, TextAlign } from '../types';
+import { ViewMode, TextAlign } from '../types';
 import { FontEntry } from '../fonts';
 import { useFonts } from './FontLoader';
-import { useFloatingToolbar } from '../hooks/useFloatingToolbar';
+import { useFormatCommandsContext } from '../hooks/useFormatCommands';
 import { ColorPicker } from './toolbar/ColorPicker';
 import { FontPicker } from './toolbar/FontPicker';
 import { SizePicker } from './toolbar/SizePicker';
 import { LinkInput } from './toolbar/LinkInput';
 import { AlignmentPicker } from './toolbar/AlignmentPicker';
+import { OverflowMenu, type PresenceUser } from './toolbar/OverflowMenu';
+import { UsersMenu } from './toolbar/UsersMenu';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface PresenceUser {
-  id: string;
-  name: string;
-  color: string;
-  cursor?: { blockId: string } | null;
-}
 
 interface ToolbarProps {
   title?: string;
@@ -38,10 +32,10 @@ interface ToolbarProps {
   onRedo: () => void;
   viewMode: ViewMode;
   onToggleViewMode: () => void;
+  /** Document-level font / size — used only for *display* fallback when the
+   *  current cursor's computed style hasn't resolved to a known font yet. */
   documentFont: string;
-  onDocumentFontChange: (family: string) => void;
   documentFontSize: number;
-  onDocumentFontSizeChange: (size: number) => void;
   remoteUsers?: PresenceUser[];
   syncStatus?: 'disconnected' | 'connecting' | 'connected' | 'synced';
   showSaved?: boolean;
@@ -56,14 +50,6 @@ interface ToolbarProps {
   onToggleSectionPanel?: () => void;
   onOpenVersionHistory?: () => void;
   onToggleSettings?: () => void;
-  /** Format command wiring (needed for the in-toolbar formatting controls). */
-  blocks?: BlockData[];
-  updateBlock?: (id: string, updates: Partial<BlockData>) => void;
-  /** Batch-update primitive: required so doc-wide ops land in one history entry. */
-  setBlocks?: (blocks: BlockData[]) => void;
-  selectedBlockIds?: Set<string>;
-  /** Scroll container ref (unused here but kept for API parity with FloatingToolbar). */
-  scrollRef?: React.RefObject<HTMLDivElement | null>;
   /** Optional share handler for the big Compartilhar button. */
   onShare?: () => void;
   /** Current user avatar (for the right pill). */
@@ -189,36 +175,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   title = 'MiniNotion',
   canUndo, canRedo, onUndo, onRedo,
   viewMode, onToggleViewMode,
-  documentFont, onDocumentFontChange,
-  documentFontSize, onDocumentFontSizeChange,
+  documentFont, documentFontSize,
   remoteUsers, syncStatus, showSaved,
   followingUserId, onFollowUser,
   zoom = 1, onZoomChange,
   hasTargetBlocks, allTargetsFullWidth, onToggleFullWidth,
   hasSections, onToggleSectionPanel,
   onOpenVersionHistory, onToggleSettings,
-  blocks, updateBlock, setBlocks, selectedBlockIds,
-  scrollRef,
   onShare,
   currentUser,
 }) => {
+  // Format commands come from the `FormatCommandsProvider` mounted in
+  // NotionEditor. Reading from context (instead of a prop) is what allows
+  // cursor-move state changes to re-render only this component, not the
+  // whole editor tree.
+  const cmd = useFormatCommandsContext();
   const { allFonts, customFonts } = useFonts();
-
-  // Shared format commands. The 'top' role ensures we don't double-register
-  // global listeners (keyboard shortcuts, link click navigation) that the
-  // floating toolbar already owns.
-  const cmd = useFloatingToolbar({
-    role: 'top',
-    documentFont,
-    blocks,
-    updateBlock,
-    setBlocks,
-    allFonts,
-    scrollRef,
-    setDocumentFont: onDocumentFontChange,
-    setDocumentFontSize: onDocumentFontSizeChange,
-    selectedBlockIds,
-  });
 
   // --- Submenu state (local, independent of the floating toolbar) ---
   const [openMenu, setOpenMenu] = useState<MenuId>(null);
@@ -229,6 +201,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const menuRef = useRef<HTMLDivElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
+  /** True once the second (refinement) positioning pass has run for the
+   *  currently-open menu. Reset on openMenu change. Cleaner sentinel than
+   *  depending on menuPos.top as a change trigger. */
+  const hasMeasuredRef = useRef(false);
 
   const openMenuAt = useCallback((menu: Exclude<MenuId, null>) => {
     setOpenMenu(prev => (prev === menu ? null : menu));
@@ -271,26 +247,34 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     };
   }, [openMenu]);
 
-  // Pass 1: initial guess using estimated width (runs before menu is mounted).
+  // Two-pass menu positioning — see `computePosition`. setState inside
+  // useLayoutEffect is the intended pattern for measure-then-position
+  // flows here.
+
+  // Pass 1: initial guess using estimated width (runs before the menu is
+  // mounted). Also resets the "has measured" flag so pass 2 will run.
   useLayoutEffect(() => {
+    hasMeasuredRef.current = false;
     if (!openMenu) { setMenuPos(null); return; }
     setMenuPos(computePosition(280));
   }, [openMenu, computePosition]);
 
-  // Pass 2: refine with the menu's real width once it has mounted.
-  useLayoutEffect(() => {
-    if (!openMenu || !menuRef.current) return;
-    const width = menuRef.current.offsetWidth;
-    if (!width) return;
-    const pos = computePosition(width);
-    if (!pos) return;
-    setMenuPos(prev => {
-      if (!prev) return pos;
-      if (Math.abs(prev.left - pos.left) < 1 && Math.abs(prev.top - pos.top) < 1) return prev;
-      return pos;
-    });
+  // Pass 2: once the menu has actually mounted, re-measure and refine. Runs
+  // on every render while a menu is open but short-circuits after the first
+  // successful measurement — `hasMeasuredRef` is the sentinel. Deliberately
+  // dep-less so it re-runs after *any* render, giving it a chance to catch
+  // the commit in which the menu element finally gets mounted.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openMenu, menuPos?.top]);
+  useLayoutEffect(() => {
+    if (!openMenu || hasMeasuredRef.current) return;
+    const el = menuRef.current;
+    if (!el) return;
+    const width = el.offsetWidth;
+    if (!width) return;
+    hasMeasuredRef.current = true;
+    const pos = computePosition(width);
+    if (pos) setMenuPos(pos);
+  });
 
   // Close on outside click.
   useEffect(() => {
@@ -773,160 +757,3 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   );
 };
 
-// ---------------------------------------------------------------------------
-// Overflow menu — secondary / infrequent controls
-// ---------------------------------------------------------------------------
-
-interface OverflowMenuProps {
-  menuRef: React.RefObject<HTMLDivElement | null>;
-  menuPos: { left: number; top: number } | null;
-  viewMode: ViewMode;
-  onToggleViewMode: () => void;
-  hasTargetBlocks?: boolean;
-  allTargetsFullWidth?: boolean;
-  onToggleFullWidth?: () => void;
-  hasSections?: boolean;
-  onToggleSectionPanel?: () => void;
-  onOpenVersionHistory?: () => void;
-  onToggleSettings?: () => void;
-}
-
-const OverflowItem: React.FC<{
-  onClick?: () => void;
-  disabled?: boolean;
-  icon: React.ReactNode;
-  label: string;
-}> = ({ onClick, disabled, icon, label }) => (
-  <button
-    type="button"
-    onMouseDown={e => e.preventDefault()}
-    onClick={onClick}
-    disabled={disabled}
-    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-default"
-  >
-    <span className="text-gray-500">{icon}</span>
-    {label}
-  </button>
-);
-
-// ---------------------------------------------------------------------------
-// Users menu — lists everyone currently in the document (click to follow)
-// ---------------------------------------------------------------------------
-
-interface UsersMenuProps {
-  menuRef: React.RefObject<HTMLDivElement | null>;
-  menuPos: { left: number; top: number } | null;
-  remoteUsers: PresenceUser[];
-  followingUserId: string | null;
-  currentUserName?: string;
-  currentUserColor?: string;
-  onFollowUser?: (id: string | null) => void;
-  onClose: () => void;
-}
-
-const UsersMenu: React.FC<UsersMenuProps> = ({
-  menuRef, menuPos, remoteUsers, followingUserId,
-  currentUserName, currentUserColor, onFollowUser, onClose,
-}) => (
-  <div
-    ref={menuRef}
-    className="absolute z-51 bg-white shadow-xl border border-gray-200 rounded-xl py-2 w-64"
-    style={{
-      left: menuPos?.left ?? 0,
-      top: menuPos?.top ?? 0,
-      visibility: menuPos ? 'visible' : 'hidden',
-    }}
-    onMouseDown={e => e.stopPropagation()}
-  >
-    <div className="px-3 py-1 text-[10px] font-medium text-gray-400 uppercase tracking-wider">
-      No documento
-    </div>
-
-    {/* Current user (always first, no interaction) */}
-    <div className="flex items-center gap-2 px-3 py-1.5">
-      <div
-        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-        style={{ backgroundColor: currentUserColor || '#3176ff' }}
-      >
-        {(currentUserName || 'V').charAt(0).toUpperCase()}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm text-gray-800 truncate">{currentUserName || 'Você'}</div>
-        <div className="text-[10px] text-gray-400">Você</div>
-      </div>
-    </div>
-
-    {/* Remote users (click to follow / unfollow) */}
-    {remoteUsers.map(user => {
-      const isFollowing = followingUserId === user.id;
-      return (
-        <button
-          key={user.id}
-          type="button"
-          onMouseDown={e => e.preventDefault()}
-          onClick={() => { onFollowUser?.(isFollowing ? null : user.id); onClose(); }}
-          className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors ${
-            isFollowing ? 'bg-gray-50' : 'hover:bg-gray-50'
-          }`}
-        >
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-            style={{ backgroundColor: user.color }}
-          >
-            {user.name.charAt(0).toUpperCase()}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm text-gray-800 truncate">{user.name}</div>
-            <div className="text-[10px] text-gray-400">
-              {isFollowing ? 'Seguindo — clique para parar' : 'Clique para seguir'}
-            </div>
-          </div>
-        </button>
-      );
-    })}
-  </div>
-);
-
-const OverflowMenu: React.FC<OverflowMenuProps> = ({
-  menuRef, menuPos, viewMode, onToggleViewMode,
-  hasTargetBlocks, allTargetsFullWidth, onToggleFullWidth,
-  hasSections, onToggleSectionPanel,
-  onOpenVersionHistory, onToggleSettings,
-}) => {
-  return (
-    <div
-      ref={menuRef}
-      className="absolute z-51 bg-white shadow-xl border border-gray-200 rounded-xl py-1 w-56"
-      style={{
-        left: menuPos?.left ?? 0,
-        top: menuPos?.top ?? 0,
-        visibility: menuPos ? 'visible' : 'hidden',
-      }}
-      onMouseDown={e => e.stopPropagation()}
-    >
-      {onOpenVersionHistory && (
-        <OverflowItem onClick={onOpenVersionHistory} icon={<Clock size={16} />} label="Histórico de versões" />
-      )}
-      {onToggleSettings && (
-        <OverflowItem onClick={onToggleSettings} icon={<Settings size={16} />} label="Configurações do docs" />
-      )}
-      {hasSections && onToggleSectionPanel && (
-        <OverflowItem onClick={onToggleSectionPanel} icon={<List size={16} />} label="Seções" />
-      )}
-      <div className="border-t border-gray-100 my-1" />
-      <OverflowItem
-        onClick={onToggleViewMode}
-        icon={viewMode === 'continuous' ? <FileText size={16} /> : <Scroll size={16} />}
-        label={viewMode === 'continuous' ? 'Modo paginado' : 'Modo contínuo'}
-      />
-      {onToggleFullWidth && (
-        <OverflowItem
-          onClick={onToggleFullWidth}
-          disabled={!hasTargetBlocks}
-          icon={<MoveHorizontal size={16} />}
-          label={allTargetsFullWidth ? 'Adicionar margens' : 'Remover margens'}
-        />
-      )}
-    </div>
-  );
-};

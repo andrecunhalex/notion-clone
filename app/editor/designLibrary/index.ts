@@ -6,6 +6,7 @@ export {
   getLibrarySnapshot,
   subscribeLibrary,
   setActiveLibrary,
+  releaseActiveLibrary,
   getActiveLibrary,
 } from './store';
 export { createFallbackLibrary } from './fallbackLibrary';

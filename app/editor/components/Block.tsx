@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useCallback, useMemo, Dispatch, SetStateAction, memo } from 'react';
 import { GripVertical } from 'lucide-react';
-import { BlockData, BlockType, SlashMenuState, DropTarget } from '../types';
+import { BlockData, BlockType, SlashMenuState } from '../types';
 import { isListType, getBulletChar, isContentEmpty } from '../utils';
 import { TableBlock } from './TableBlock';
 import { ImageBlock } from './ImageBlock';
@@ -46,7 +46,6 @@ interface BlockProps {
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDragOver: (e: React.DragEvent, id: string) => void;
   onDrop: (e: React.DragEvent) => void;
-  dropTarget: DropTarget | null;
   onHeightChange: (id: string, height: number) => void;
   onClearSelection: () => void;
   onBlockFocus?: (blockId: string | null) => void;
@@ -110,7 +109,6 @@ const BlockInner: React.FC<BlockProps> = ({
   onDragStart,
   onDragOver,
   onDrop,
-  dropTarget,
   onHeightChange,
   onClearSelection,
   onBlockFocus,
@@ -284,15 +282,11 @@ const BlockInner: React.FC<BlockProps> = ({
       onDragOver={e => onDragOver(e, block.id)}
       onDrop={e => { e.stopPropagation(); onDrop(e); }}
     >
-      {dropTarget && dropTarget.id === block.id && (
-        <div
-          className="absolute left-0 right-0 h-1 bg-blue-500 pointer-events-none z-10"
-          style={{
-            top: dropTarget.position === 'top' ? '-2px' : 'auto',
-            bottom: dropTarget.position === 'bottom' ? '-2px' : 'auto'
-          }}
-        />
-      )}
+      {/* The drop indicator used to live here, driven by a `dropTarget` prop.
+          It has been moved out of React and is now a single DOM node owned by
+          NotionEditor, positioned directly in the dragover handler — see
+          `useDragAndDrop.positionIndicator`. That eliminates a NotionEditor
+          re-render on every dragover tick (~60Hz). */}
 
       {isFullWidth ? (
         <div className={`absolute left-2 top-0 w-12 shrink-0 flex items-center justify-center ${HANDLE_LINE[block.type] || 'h-6'} z-10`}>
@@ -377,7 +371,10 @@ const BlockInner: React.FC<BlockProps> = ({
   );
 };
 
-// Memoize Block — only re-render when its own data changes
+// Memoize Block — only re-render when its own data changes. Note: no
+// `dropTarget` comparison anymore; the drop indicator is owned by an
+// external DOM node driven straight from the drag handlers, so nothing
+// in Block's render output depends on drag state.
 export const Block = memo(BlockInner, (prev, next) => {
   return (
     prev.block === next.block &&
@@ -388,8 +385,6 @@ export const Block = memo(BlockInner, (prev, next) => {
     prev.edgePadding === next.edgePadding &&
     prev.isFirstOnPage === next.isFirstOnPage &&
     prev.isLastOnPage === next.isLastOnPage &&
-    prev.dropTarget?.id === next.dropTarget?.id &&
-    prev.dropTarget?.position === next.dropTarget?.position &&
     prev.readOnly === next.readOnly
   );
 });
