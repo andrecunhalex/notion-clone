@@ -453,7 +453,7 @@ export const DocumentSettingsPanel: React.FC<DocumentSettingsPanelProps> = ({
             onClick={onToggle}
             className="flex items-center justify-between px-4 py-3.5 shrink-0 hover:bg-gray-50 transition-colors text-left"
           >
-            <span className="text-base font-semibold text-gray-800">Configuracoes</span>
+            <span className="text-base font-semibold text-gray-800">Configurações</span>
             {isOpen ? <ChevronUp size={18} className="text-gray-400 shrink-0" /> : <ChevronDown size={18} className="text-gray-400 shrink-0" />}
           </button>
           {isOpen && (
@@ -492,7 +492,7 @@ export const DocumentSettingsPanel: React.FC<DocumentSettingsPanelProps> = ({
           <div className="shrink-0 pt-3 pb-2 px-5">
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-3" />
             <div className="flex items-center justify-between">
-              <span className="text-base font-semibold text-gray-800">Configuracoes</span>
+              <span className="text-base font-semibold text-gray-800">Configurações</span>
               <button onClick={onToggle} className="p-1.5 hover:bg-gray-100 rounded-full transition-colors">
                 <X size={18} className="text-gray-400" />
               </button>
